@@ -22,6 +22,16 @@ from lxml import etree
 
 cmdline = None
 
+DEFAULT_SELFCLOSE_TAGS = [
+    'area', 'base', 'br', 'col', 'command', 'embed',
+    'hr', 'img', 'input', 'keygen', 'link', 'meta',
+    'param', 'source', 'track', 'wbr'
+]
+
+DEFAULT_PRESERVE_TAGS = [
+    'pre', 'textarea', 'script'
+]
+
 
 # Some utility functions/etc
 ################################################################################
@@ -30,23 +40,28 @@ class Error(Exception):
     """ A basic error class for our errors. """
     pass
 
+
 def write_output(s):
     """ Output something to stderr. """
     sys.stderr.write(s)
     sys.stderr.flush()
 
-def handle_error(e, abort=True):
+
+def handle_error(error, abort=True):
     """ Handle an error. """
-    if isinstance(e, etree.Error):
+    if isinstance(error, etree.Error):
         result = ''
-        for entry in e.error_log:
-            result += '[' + str(entry.filename) + ', ' + str(entry.line) + ', ' + str(entry.column) + '] ' + entry.message + '\n'
+        for i in error.error_log:
+            data = (str(i.filename), str(i.line), str(i.column), str(i.message))
+            result += '[{0}, {1], {2}] {3}\n'.format(data)
+            #result += '[' + str(entry.filename) + ', ' + str(entry.line) + ', ' + str(entry.column) + '] ' + entry.message + '\n'
         write_output(result)
     else:
-        write_output(str(e) + '\n')
+        write_output(str(error) + '\n')
 
     if abort:
         sys.exit(-1)
+
 
 def getbool(b):
     """ Test if a value it true or not """
@@ -55,12 +70,14 @@ def getbool(b):
 # Setup lxml
 ################################################################################
 
-# Set up some custom xsl/xpath functions
 def lxml_base_uri(context, node=None):
+    """ Return the base uri of a node. """
     base = node[0].base if node else context.context_node.base
     return base.replace(os.sep, '/')
 
+
 def lxml_rbase_uri(context, node=None):
+    """ Return the base uri fo a node relative to the base uri of the root node. """
     node = node[0] if node else context.context_node
     base = node.base
     pbase = base
@@ -84,16 +101,21 @@ def lxml_rbase_uri(context, node=None):
 
     return rbase
 
+
 def lxml_dirname(context, base):
+    """ Return the directory portion of a path containing '/' """
     pos = base.rfind('/')
     return base[:pos + 1] if pos >= 0 else ""
 
+
 def lxml_basename(context, base):
+    """ Return the filename portion of a path containing '/' """
     pos = base.rfind('/')
     return base[pos + 1:] if pos >= 0 else base
 
-# Syntax highlighting
+
 def lxml_highlight_code(context, code, syntax):
+    """ Perform highlighting using Pygments. """
     import pygments
     import pygments.formatters
     import pygments.lexers
@@ -115,12 +137,14 @@ def lxml_highlight_code(context, code, syntax):
 
     return result
 
+
 def lxml_highlight_file(context, filename, syntax):
+    """ Highlight the contents of a file. """
     return lxml_highlight_code(context, file(filename, "rU").read(), syntax)
 
 
-# Add custom functions
 def lxml_setup():
+    """ Add the functions to LXML. """
     ns = etree.FunctionNamespace('urn:mrbavii:xml2html')
 
     ns['base-uri'] = lxml_base_uri
@@ -136,7 +160,7 @@ def lxml_setup():
 ################################################################################
 
 def build():
-
+    """ Build the HTML from the XML. """
     # Load the inputs
     inxml = etree.parse(cmdline.input)
     inxml.xinclude()
@@ -156,7 +180,17 @@ def build():
     # save the output
     file(cmdline.output, 'wb').write(result.encode(cmdline.encoding))
 
+
+def cleanup_helper(mo):
+    """ Callback for the header/footer. """
+    key = mo.group(1)
+    if key == '':
+        return '@';
+    return cmdline.params[key]
+
+
 def cleanup(output):
+    """ Clean up and fix the output. """
     # Remove leading/tailing whitespace
     output = output.strip()
 
@@ -179,10 +213,6 @@ def cleanup(output):
     if len(cmdline.selfclose_tags) > 0:
         selfclose_re = r'(?!' + r'|'.join(cmdline.selfclose_tags) + r')'
     output = re.sub(r'(?si)<' + selfclose_re + r'([a-zA-Z0-9:]*?)(((\s[^>]*?)?)/>)', r'<\1\3></\1>', output)
-
-    # Find and replace
-    #for pair in self.replacements:
-    #    output = output.replace(pair[0], pair[1])
 
     # Strip whitespace from empty lines and start of lines
     if cmdline.strip:
@@ -209,66 +239,91 @@ def cleanup(output):
         output = result
 
     # Add header and footer to output
-    def helper(mo):
-        key = mo.group(1)
-        if key == '':
-            return '@';
-        return cmdline.params[key]
-
     if cmdline.header:
-        header = codecs.open(cmdline.header, 'rU', encoding=cmdline.encoding).read()
-        output = re.sub('@([a-zA-Z0-9]*?)@', helper, header) + "\n" + output
+        header = codecs.open(cmdline.header, 'rU', encoding=cmdline.encoding).read().strip()
+        output = re.sub('@([a-zA-Z0-9]*?)@', cleanup_helper, header) + "\n" + output
 
     if cmdline.footer:
-        footer = codecs.open(cmdline.footer, 'rU', encoding=cmdline.encoding).read()
-        output = output + "\n" + re.sub('@([a-zA-Z0-9]*?)@', helper, footer)
+        footer = codecs.open(cmdline.footer, 'rU', encoding=cmdline.encoding).read().strip()
+        output = output + "\n" + re.sub('@([a-zA-Z0-9]*?)@', cleanup_helper, footer)
 
     return output
 
 # Entry point
 ################################################################################
 
-
-# Parse the command line
-
-
-class _CmdOptions(object):
+class Options(object):
+    """ Container to hold the options. """
     pass
+
+
+def update_set(output, input):
+    """ Update a set with values from a string. """
+    if input[0:1] == '+':
+        fn = output.add
+        input = input[1:]
+    elif input[0:1] == '!':
+        fn = output.discard
+        input = input[1:]
+    else:
+        fn = output.add
+        output.clear()
+
+    for i in input.split(','):
+        if i:
+            fn(i)
 
 def parse_cmdline():
     """ Parse command line arguments """
 
+    # Help messages
+    set_msg = "; add by using '+<tag>,<tag>', remove by using '!<tag>,<tag>', replace by using '<tag>,<tag>'"
+
+    root_help = 'root directory used for relative file names'
+    input_help = 'input file name; this should be located under the root directory'
+    output_help = 'output file name; this should be located under the root directory'
+    transform_help = 'XSL file name'
+    header_help = 'header file name'
+    footer_help = 'footer file name'
+    property_help = 'a property name=value used for internal settings'
+    encoding_help = 'character encoding to use for the output file; defaults to UTF-8'
+    strip_help = 'strip leading spaces from output'
+    selfclose_help = 'tags that are allowed to be self closing, all other tags will changed from <tag /> to <tag></tag>;' \
+                     ' defaults are ' + ','.join(DEFAULT_SELFCLOSE_TAGS) + set_msg
+    preserve_help = 'tags to preserve from stripping; defaults are ' + ','.join(DEFAULT_PRESERVE_TAGS) + set_msg
+    params_help = 'name=value parameters to pass to the XSL stylesheet'
+
     # Setup and parse command line
-    parser = argparse.ArgumentParser(description='XML to HTML.', add_help=False)
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--help', action='help')
-    parser.add_argument('-r', '--root', dest='root', action='store', required=True, help='root path used for relative names')
-    parser.add_argument('-i', '--input', dest='input', action='store', required=True, help='input file name')
-    parser.add_argument('-o', '--output', dest='output', action='store', required=True, help='output file name')
-    parser.add_argument('-t', '--transform', dest='transform', action='store', required=True, help='XSLT tranform file name')
-    parser.add_argument('-h', '--header', dest='header', action='store', help='header file name')
-    parser.add_argument('-f', '--footer', dest='footer', action='store', help='footer file name')
-    parser.add_argument('-p', '--property', dest='properties', action='append', help='property in the form of name=value')
-    parser.add_argument('-e', '--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
-    parser.add_argument('-s', '--strip', dest='strip', action='store_true', default=False, help='strip spaces from output')
-    parser.add_argument('--selfclose', dest='selfclose_tags', action='append', help='tags that are allowed to be self closing')
-    parser.add_argument('--preserve', dest='preserve_tags', action='append', help='tags that should not be stripped')
-    parser.add_argument('params', action='store', nargs='*', help='a list of name=value parameters for XSL processing')
+    parser.add_argument('-r', '--root', dest='root', action='store', required=True, help=root_help)
+    parser.add_argument('-i', '--input', dest='input', action='store', required=True, help=input_help)
+    parser.add_argument('-o', '--output', dest='output', action='store', required=True, help=output_help)
+    parser.add_argument('-t', '--transform', dest='transform', action='store', required=True, help=transform_help)
+    parser.add_argument('-h', '--header', dest='header', action='store', help=header_help)
+    parser.add_argument('-f', '--footer', dest='footer', action='store', help=footer_help)
+    parser.add_argument('-p', '--property', dest='property', action='append', help=property_help)
+    parser.add_argument('-e', '--encoding', dest='encoding', action='store', default='utf-8', help=encoding_help)
+    parser.add_argument('-s', '--strip', dest='strip', action='store_true', default=False, help=strip_help)
+    parser.add_argument('--selfclose', dest='selfclose_tags', action='append', help=selfclose_help)
+    parser.add_argument('--preserve', dest='preserve_tags', action='append', help=preserve_help)
+    parser.add_argument('params', action='store', nargs='*', help=params_help)
 
     result = parser.parse_args()
 
-    # Set global variables in this module
-    o = _CmdOptions()
+    # Set the variables in the options object
+    o = Options()
 
     o.root = os.path.abspath(result.root)
     o.input = os.path.abspath(result.input)
     o.output = os.path.abspath(result.output)
-    o.transform = result.transform
-    o.header = result.header
-    o.footer = result.footer
+    o.transform = os.path.abspath(result.transform)
+    o.header = os.path.abspath(result.header) if result.header else None
+    o.footer = os.path.abspath(result.footer) if result.footer else None
 
     o.properties = {}
-    if result.properties:
-        for i in result.properties:
+    if result.property:
+        for i in result.property:
             pair = i.split('=', 1)
             if len(pair) == 2:
                 o.properties[pair[0]] = pair[1]
@@ -276,36 +331,15 @@ def parse_cmdline():
     o.encoding = result.encoding
     o.strip = result.strip
 
-    def update(output, input):
-        if input[0:1] == '+':
-            fn = output.add
-            input = input[1:]
-        elif input[0:1] == '!':
-            fn = output.discard
-            input = input[1:]
-        else:
-            fn = output.add
-            output.clear()
-
-        for i in input.split(','):
-            if i:
-                fn(i)
-
-    o.selfclose_tags = set([
-        'area', 'base', 'br', 'col', 'command', 'embed',
-        'hr', 'img', 'input', 'keygen', 'link', 'meta',
-        'param', 'source', 'track', 'wbr'
-    ])
+    o.selfclose_tags = set(DEFAULT_SELFCLOSE_TAGS)
     if result.selfclose_tags:
         for i in result.selfclose_tags:
-            update(o.selfclose_tags, i)
+            update_set(o.selfclose_tags, i)
 
-    o.preserve_tags = set([
-        'pre', 'textarea', 'script'
-    ])
+    o.preserve_tags = set(DEFAULT_PRESERVE_TAGS)
     if result.preserve_tags:
         for i in result.preserve_tags:
-            update(o.preserve_tags, i)
+            update_set(o.preserve_tags, i)
 
     relinput = os.path.relpath(o.input, o.root)
     reloutput = os.path.relpath(o.output, o.root)
@@ -318,13 +352,11 @@ def parse_cmdline():
         'relinput': relinput.replace(os.sep, '/'),
         'reloutput': reloutput.replace(os.sep, '/')
     }
-
     if result.params:
         for i in result.params:
             pair = i.split('=', 1)
             if len(pair) == 2:
                 o.params[pair[0]] = pair[1]
-
     for i in o.params:
         o.params[i] = etree.XSLT.strparam(o.params[i])
 
