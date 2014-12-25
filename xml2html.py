@@ -241,6 +241,7 @@ def parse_cmdline():
     # Setup and parse command line
     parser = argparse.ArgumentParser(description='XML to HTML.', add_help=False)
     parser.add_argument('--help', action='help')
+    parser.add_argument('-r', '--root', dest='root', action='store', required=True, help='root path used for relative names')
     parser.add_argument('-i', '--input', dest='input', action='store', required=True, help='input file name')
     parser.add_argument('-o', '--output', dest='output', action='store', required=True, help='output file name')
     parser.add_argument('-t', '--transform', dest='transform', action='store', required=True, help='XSLT tranform file name')
@@ -258,8 +259,9 @@ def parse_cmdline():
     # Set global variables in this module
     o = _CmdOptions()
 
-    o.input = result.input
-    o.output = result.output
+    o.root = os.path.abspath(result.root)
+    o.input = os.path.abspath(result.input)
+    o.output = os.path.abspath(result.output)
     o.transform = result.transform
     o.header = result.header
     o.footer = result.footer
@@ -284,11 +286,16 @@ def parse_cmdline():
         for i in result.preserve_tags:
             o.preserve_tags.extend(i.split(','))
 
+    relinput = os.path.relpath(o.input, o.root)
+    reloutput = os.path.relpath(o.output, o.root)
     o.params = {
-        'sourcefile': o.input.replace(os.sep, '/'),
-        'targetfile': o.output.replace(os.sep, '/'),
-        'sourcedir': os.path.dirname(o.input).replace(os.sep, '/'),
-        'targetdir': os.path.dirname(o.output).replace(os.sep, '/')
+        'root': o.root.replace(os.sep, '/'),
+        'input': o.input.replace(os.sep, '/'),
+        'output': o.output.replace(os.sep, '/'),
+        'inputrelroot': '../' * relinput.count(os.sep),
+        'outputrelroot': '../' * reloutput.count(os.sep),
+        'relinput': relinput.replace(os.sep, '/'),
+        'reloutput': reloutput.replace(os.sep, '/')
     }
 
     if result.params:
