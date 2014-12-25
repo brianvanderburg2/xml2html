@@ -30,7 +30,7 @@ class Error(Exception):
     """ A basic error class for our errors. """
     pass
 
-def output(s):
+def write_output(s):
     """ Output something to stderr. """
     sys.stderr.write(s)
     sys.stderr.flush()
@@ -41,9 +41,9 @@ def handle_error(e, abort=True):
         result = ''
         for entry in e.error_log:
             result += '[' + str(entry.filename) + ', ' + str(entry.line) + ', ' + str(entry.column) + '] ' + entry.message + '\n'
-        output(result)
+        write_output(result)
     else:
-        output(str(e) + '\n')
+        write_output(str(e) + '\n')
 
     if abort:
         sys.exit(-1)
@@ -174,9 +174,11 @@ def cleanup(output):
             output = output[pos + 1:]
             output = output.lstrip()
 
-    # Fix closing tags: <tag /> -> <tag></tag> by changing all tags except those allowed to be empty
-    if len(cmdline.empty_tags) > 0:
-        output = re.sub(r'(?si)<(?!'+ r'|'.join(cmdline.empty_tags) + r')([a-zA-Z0-9:]*?)(((\s[^>]*?)?)/>)', r'<\1\3></\1>', output)
+    # Fix self closing tags: <tag /> -> <tag></tag> by changing all tags except those allowed to self close
+    selfclose_re = ''
+    if len(cmdline.selfclose_tags) > 0:
+        selfclose_re = r'(?!' + r'|'.join(cmdline.selfclose_tags) + r')'
+    output = re.sub(r'(?si)<' + selfclose_re + r'([a-zA-Z0-9:]*?)(((\s[^>]*?)?)/>)', r'<\1\3></\1>', output)
 
     # Find and replace
     #for pair in self.replacements:
@@ -247,7 +249,7 @@ def parse_cmdline():
     parser.add_argument('-p', '--property', dest='properties', action='append', help='property in the form of name=value')
     parser.add_argument('-e', '--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
     parser.add_argument('-s', '--strip', dest='strip', action='store_true', default=False, help='strip spaces from output')
-    parser.add_argument('--empty', dest='empty_tags', action='append', help='tags that should be changed from <tag /> to <tag></tag>')
+    parser.add_argument('--selfclose', dest='selfclose_tags', action='append', help='tags that are allowed to be self closing')
     parser.add_argument('--preserve', dest='preserve_tags', action='append', help='tags that should not be stripped')
     parser.add_argument('params', action='store', nargs='*', help='a list of name=value parameters for XSL processing')
 
@@ -272,10 +274,10 @@ def parse_cmdline():
     o.encoding = result.encoding
     o.strip = result.strip
 
-    o.empty_tags = []
-    if result.empty_tags:
-        for i in result.empty_tags:
-            o.emptytags.extend(i.split(','))
+    o.selfclose_tags = []
+    if result.selfclose_tags:
+        for i in result.selfclose_tags:
+            o.selfclose_tags.extend(i.split(','))
 
     o.preserve_tags = []
     if result.preserve_tags:
@@ -287,7 +289,7 @@ def parse_cmdline():
         for i in result.params:
             pair = i.split('=', 1)
             if len(pair) == 2:
-                o.params[pair[0]] = pair[1]
+                o.params[pair[0]] = etree.XSLT.strparam(pair[1])
 
     return o
 
