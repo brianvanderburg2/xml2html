@@ -276,15 +276,36 @@ def parse_cmdline():
     o.encoding = result.encoding
     o.strip = result.strip
 
-    o.selfclose_tags = []
+    def update(output, input):
+        if input[0:1] == '+':
+            fn = output.add
+            input = input[1:]
+        elif input[0:1] == '!':
+            fn = output.discard
+            input = input[1:]
+        else:
+            fn = output.add
+            output.clear()
+
+        for i in input.split(','):
+            if i:
+                fn(i)
+
+    o.selfclose_tags = set([
+        'area', 'base', 'br', 'col', 'command', 'embed',
+        'hr', 'img', 'input', 'keygen', 'link', 'meta',
+        'param', 'source', 'track', 'wbr'
+    ])
     if result.selfclose_tags:
         for i in result.selfclose_tags:
-            o.selfclose_tags.extend(i.split(','))
+            update(o.selfclose_tags, i)
 
-    o.preserve_tags = []
+    o.preserve_tags = set([
+        'pre', 'textarea', 'script'
+    ])
     if result.preserve_tags:
         for i in result.preserve_tags:
-            o.preserve_tags.extend(i.split(','))
+            update(o.preserve_tags, i)
 
     relinput = os.path.relpath(o.input, o.root)
     reloutput = os.path.relpath(o.output, o.root)
