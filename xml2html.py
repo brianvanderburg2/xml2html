@@ -101,9 +101,9 @@ def lxml_highlight_code(context, code, syntax):
     global cmdline
 
     # Options
-    nowrap = not util.getbool(cmdline.properties.get('highlight.wrap', 'no'))
-    noclasses = not util.getbool(cmdline.properties.get('highlight.classes', 'yes'))
-    nobackground = not util.getbool(cmdline.properties.get('highlight.background', 'no'))
+    nowrap = not getbool(cmdline.properties.get('highlight.wrap', 'no'))
+    noclasses = not getbool(cmdline.properties.get('highlight.classes', 'yes'))
+    nobackground = not getbool(cmdline.properties.get('highlight.background', 'no'))
     cssclass = cmdline.properties.get('highlight.cssclass', 'highlight')
 
     lexer = pygments.lexers.get_lexer_by_name(syntax, stripall=True)
@@ -284,12 +284,21 @@ def parse_cmdline():
         for i in result.preserve_tags:
             o.preserve_tags.extend(i.split(','))
 
-    o.params = {}
+    o.params = {
+        'sourcefile': o.input.replace(os.sep, '/'),
+        'targetfile': o.output.replace(os.sep, '/'),
+        'sourcedir': os.path.dirname(o.input).replace(os.sep, '/'),
+        'targetdir': os.path.dirname(o.output).replace(os.sep, '/')
+    }
+
     if result.params:
         for i in result.params:
             pair = i.split('=', 1)
             if len(pair) == 2:
-                o.params[pair[0]] = etree.XSLT.strparam(pair[1])
+                o.params[pair[0]] = pair[1]
+
+    for i in o.params:
+        o.params[i] = etree.XSLT.strparam(o.params[i])
 
     return o
 
