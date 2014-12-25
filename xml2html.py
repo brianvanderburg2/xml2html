@@ -29,7 +29,7 @@ DEFAULT_SELFCLOSE_TAGS = [
 ]
 
 DEFAULT_PRESERVE_TAGS = [
-    'pre', 'textarea', 'script'
+    'pre', 'textarea', 'script', 'style'
 ]
 
 
@@ -170,8 +170,13 @@ def build():
     
     transform = etree.XSLT(xsl)
 
-    # build the output
-    result = transform(inxml, **cmdline.params)
+    # prepare parameters
+    params = dict(cmdline.params)
+    for i in params:
+        params[i] = etree.XSLT.strparam(params[i])
+
+    #build the output
+    result = transform(inxml, **params)
     if result is None:
         raise Error('No output')
 
@@ -276,38 +281,21 @@ def update_set(output, input):
 def parse_cmdline():
     """ Parse command line arguments """
 
-    # Help messages
-    set_msg = "; add by using '+<tag>,<tag>', remove by using '!<tag>,<tag>', replace by using '<tag>,<tag>'"
-
-    root_help = 'root directory used for relative file names'
-    input_help = 'input file name; this should be located under the root directory'
-    output_help = 'output file name; this should be located under the root directory'
-    transform_help = 'XSL file name'
-    header_help = 'header file name'
-    footer_help = 'footer file name'
-    property_help = 'a property name=value used for internal settings'
-    encoding_help = 'character encoding to use for the output file; defaults to UTF-8'
-    strip_help = 'strip leading spaces from output'
-    selfclose_help = 'tags that are allowed to be self closing, all other tags will changed from <tag /> to <tag></tag>;' \
-                     ' defaults are ' + ','.join(DEFAULT_SELFCLOSE_TAGS) + set_msg
-    preserve_help = 'tags to preserve from stripping; defaults are ' + ','.join(DEFAULT_PRESERVE_TAGS) + set_msg
-    params_help = 'name=value parameters to pass to the XSL stylesheet'
-
     # Setup and parse command line
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--help', action='help')
-    parser.add_argument('-r', '--root', dest='root', action='store', required=True, help=root_help)
-    parser.add_argument('-i', '--input', dest='input', action='store', required=True, help=input_help)
-    parser.add_argument('-o', '--output', dest='output', action='store', required=True, help=output_help)
-    parser.add_argument('-t', '--transform', dest='transform', action='store', required=True, help=transform_help)
-    parser.add_argument('-h', '--header', dest='header', action='store', help=header_help)
-    parser.add_argument('-f', '--footer', dest='footer', action='store', help=footer_help)
-    parser.add_argument('-p', '--property', dest='property', action='append', help=property_help)
-    parser.add_argument('-e', '--encoding', dest='encoding', action='store', default='utf-8', help=encoding_help)
-    parser.add_argument('-s', '--strip', dest='strip', action='store_true', default=False, help=strip_help)
-    parser.add_argument('--selfclose', dest='selfclose_tags', action='append', help=selfclose_help)
-    parser.add_argument('--preserve', dest='preserve_tags', action='append', help=preserve_help)
-    parser.add_argument('params', action='store', nargs='*', help=params_help)
+    parser.add_argument('-r', '--root', dest='root', action='store', required=True, help='root directory')
+    parser.add_argument('-i', '--input', dest='input', action='store', required=True, help='input file name')
+    parser.add_argument('-o', '--output', dest='output', action='store', required=True, help='output file name')
+    parser.add_argument('-t', '--transform', dest='transform', action='store', required=True, help='XSL file name')
+    parser.add_argument('-h', '--header', dest='header', action='store', help='header file name')
+    parser.add_argument('-f', '--footer', dest='footer', action='store', help='footer file name')
+    parser.add_argument('-p', '--property', dest='property', action='append', help='a property name=value pair')
+    parser.add_argument('-e', '--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
+    parser.add_argument('-s', '--strip', dest='strip', action='store_true', default=False, help='strip leading spaces from output')
+    parser.add_argument('--selfclose', dest='selfclose_tags', action='append', help='allowed self closing tags')
+    parser.add_argument('--preserve', dest='preserve_tags', action='append', help='preserved tags')
+    parser.add_argument('params', action='store', nargs='*', help='XSL name=value parameters')
 
     result = parser.parse_args()
 
@@ -357,9 +345,6 @@ def parse_cmdline():
             pair = i.split('=', 1)
             if len(pair) == 2:
                 o.params[pair[0]] = pair[1]
-    for i in o.params:
-        o.params[i] = etree.XSLT.strparam(o.params[i])
-
     return o
 
 
