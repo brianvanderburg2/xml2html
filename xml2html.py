@@ -121,7 +121,7 @@ def lxml_highlight_file(context, filename, syntax):
 
 # Add custom functions
 def lxml_setup():
-    ns = etree.FunctionNamespace('urn:mrbavii:xmlsite')
+    ns = etree.FunctionNamespace('urn:mrbavii:xml2html')
 
     ns['base-uri'] = lxml_base_uri
     ns['rbase-uri'] = lxml_rbase_uri
