@@ -133,14 +133,14 @@ def lxml_highlight_code(context, code, syntax):
                                                   cssclass=cssclass,
                                                   noclasses=noclasses,
                                                   nobackground=nobackground)
-    result = pygments.highlight(code, lexer, formatter)
+    result = pygments.highlight(code.strip(), lexer, formatter)
 
     return result
 
 
 def lxml_highlight_file(context, filename, syntax):
     """ Highlight the contents of a file. """
-    return lxml_highlight_code(context, file(filename, "rU").read(), syntax)
+    return lxml_highlight_code(context, codecs.open(filename, "rU", encoding=cmdline.encoding).read(), syntax)
 
 
 def lxml_setup():
@@ -180,10 +180,10 @@ def build():
     if result is None:
         raise Error('No output')
 
-    result = cleanup(etree.tostring(result, pretty_print=True))
+    result = cleanup(etree.tostring(result, pretty_print=True, encoding='unicode'))
 
     # save the output
-    file(cmdline.output, 'wb').write(result.encode(cmdline.encoding))
+    open(cmdline.output, 'wb').write(result.encode(cmdline.encoding))
 
 
 def cleanup_helper(mo):
