@@ -65,7 +65,7 @@ def handle_error(error, abort=True):
 
 def getbool(b):
     """ Test if a value it true or not """
-    return b.lower() in ('yes', 'true', 'on', 1)
+    return b.lower() in ('yes', 'true', 'on', '1')
 
 # Setup lxml
 ################################################################################
