@@ -208,8 +208,12 @@ def build():
     day = day[0]
 
     # update the state staging
-    state = State(cmdline.state)
-    state.staging[relpath] = (relpath, title, summary, year, month, day)
+    if os.path.isfile(cmdline.state):
+        state = State(cmdline.state)
+    else:
+        state = State()
+
+    state.entries[relpath] = (relpath, title, summary, year, month, day)
     state.save(cmdline.state)
 
 
@@ -294,7 +298,6 @@ class State(object):
         # Format is (relpath, title, summary, year, month, day)
         # entrie is not stored if any item is missing except summary
         self.entries = {}
-        self.staging = {}
 
         if filename is None:
             return
@@ -308,65 +311,38 @@ class State(object):
         # get all entires
         entries = root.findall('{{{0}}}entry'.format(self.XML_NAMESPACE))
         for i in entries:
-            entry = self.load_entry(i)
+            entry = (
+                i.get('relpath'),
+                i.get('title'),
+                i.get('summary'),
+                i.get('year'),
+                i.get('month'),
+                i.get('day')
+            )
             self.entries[entry[0]] = entry
-
-        # get all staging items
-        entries = root.findall('{{{0}}}staging'.format(self.XML_NAMESPACE))
-        for i in entries:
-            entry = self.load_entry(i)
-            self.staging[entry[0]] = entry
-
-    def load_entry(self, xml):
-        return (
-            xml.get('relpath'),
-            xml.get('title'),
-            xml.get('summary'),
-            xml.get('year'),
-            xml.get('month'),
-            xml.get('day')
-        )
 
     def save(self, filename):
         root = etree.Element('{{{0}}}state'.format(self.XML_NAMESPACE))
 
         for i in self.entries:
-            self.save_entry(root, '{{{0}}}entry'.format(self.XML_NAMESPACE), self.entries[i])
+            entry = self.entries[i]
+            
+            element = etree.SubElement(root, '{{{0}}}entry'.format(self.XML_NAMESPACE))
 
-        for i in self.staging:
-            self.save_entry(root, '{{{0}}}staging'.format(self.XML_NAMESPACE), self.staging[i])
+            element.set('relpath', entry[0])
+            element.set('title', entry[1])
+            if entry[2]:
+                element.set('summary', entry[2])
+            element.set('year', entry[3])
+            element.set('month', entry[4])
+            element.set('day', entry[5])
 
         tree = etree.ElementTree(root)
         tree.write(filename, encoding=cmdline.encoding, xml_declaration=True, method='xml', pretty_print=True)
 
-    def save_entry(self, xml, tag, entry):
-        element = etree.SubElement(xml, tag)
-        element.set('relpath', entry[0])
-        element.set('title', entry[1])
-        if entry[2]:
-            element.set('summary', entry[2])
-        element.set('year', entry[3])
-        element.set('month', entry[4])
-        element.set('day', entry[5])
 
-
-def initialize():
-    """ Initialize the state. """
-    if os.path.isfile(cmdline.state):
-        state = State(cmdline.state)
-    else:
-        state = State()
-
-    state.staging = {}
-    state.save(cmdline.state)
-
-def finalize():
+def clear():
     state = State(cmdline.state)
-
-    # Move staging to main area
-    for i in state.staging:
-        state.entries[i] = state.staging[i]
-    state.staging = {}
 
     # Remove missing entires
     for i in state.entries.keys():
@@ -411,11 +387,6 @@ def parse_cmdline():
 
     subparsers = parser.add_subparsers(dest='command', help='commands')
 
-    init_parser = subparsers.add_parser('initialize', add_help=False)
-    init_parser.add_argument('--help', action='help')
-    init_parser.add_argument('--state', dest='state', action='store', required=True, help='state file')
-    init_parser.add_argument('--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
-
     build_parser = subparsers.add_parser('build', add_help=False)
     build_parser.add_argument('--help', action='help')
     build_parser.add_argument('--root', dest='root', action='store', required=True, help='root directory')
@@ -438,11 +409,11 @@ def parse_cmdline():
     build_parser.add_argument('--day-xpath', dest='day_xpath', action='store', help='XPath to extract a day')
     build_parser.add_argument('params', action='store', nargs='*', help='XSL name=value parameters')
 
-    finalize_parser = subparsers.add_parser('finalize', add_help=False)
-    finalize_parser.add_argument('--help', action='help')
-    finalize_parser.add_argument('--root', dest='root', action='store', required=True, help='root directory')
-    finalize_parser.add_argument('--state', dest='state', action='store', required=True, help='state file')
-    finalize_parser.add_argument('--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
+    clear_parser = subparsers.add_parser('clear', add_help=False)
+    clear_parser.add_argument('--help', action='help')
+    clear_parser.add_argument('--root', dest='root', action='store', required=True, help='root directory')
+    clear_parser.add_argument('--state', dest='state', action='store', required=True, help='state file')
+    clear_parser.add_argument('--encoding', dest='encoding', action='store', default='utf-8', help='output character encoding')
 
     result = parser.parse_args()
 
@@ -450,11 +421,7 @@ def parse_cmdline():
     o = Options()
     o.command = result.command
 
-    if o.command == 'initialize':
-        o.state = os.path.abspath(result.state)
-        o.encoding = result.encoding
-
-    elif o.command == 'build':
+    if o.command == 'build':
         o.root = os.path.abspath(result.root)
         o.input = os.path.abspath(result.input)
         o.output = os.path.abspath(result.output)
@@ -513,7 +480,7 @@ def parse_cmdline():
         o.month_xpath = result.month_xpath
         o.day_xpath = result.day_xpath
 
-    elif o.command == 'finalize':
+    elif o.command == 'clear':
         o.root = os.path.abspath(result.root)
         o.state = os.path.abspath(result.state)
         o.encoding = result.encoding
@@ -528,12 +495,10 @@ def main():
     try:
         lxml_setup()
         cmdline = parse_cmdline()
-        if cmdline.command == 'initialize':
-            initialize()
-        elif cmdline.command == 'build':
+        if cmdline.command == 'build':
             build()
-        elif cmdline.command == 'finalize':
-            finalize()
+        elif cmdline.command == 'clear':
+            clear()
         else:
             raise Error('Unknown command ' + cmdline.command)
     except (Error, etree.Error, OSError, IOError, ValueError) as e:

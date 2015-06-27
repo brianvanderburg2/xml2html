@@ -10,39 +10,23 @@ Usage
 xml2html <action> <arguments> ...
 
 action:
-    initialize, build, finalize
+    build, clear
 
 
 Actions
 =======
 
-There are three actions, initialize, build, and finalize.  The initialize
-and finalize actions are only needed if you want to track the state of various
-input documents and create an output state document.  This state can track a
-document title, summary, year, month, and day.
-
-For the initialize action, the state argument is requied and an encoding
-argument is optional.  For the finalize action, the state and root arguments
-are required and an encoding argument is optional.
-
-During the initialize action, the state file is created if it does not exist.
-If it does exist, any staging items are removed.
+There are two actions, build, and claer.  The build action can optionally store
+data about the input document in a state file.  The cleanup action goes through
+and removes any entries in the state file that are no longer present on disk.
 
 During the build action, if a state file is specified, then the namepsace
 and xpath arguments are used to extract information from the input document
-and store this information along with the document relative path as a staging
-entry in the state document.
+and store this information along with the document relative path in the state
+document.
 
-During the finalize action, all staging entries in the state document are moved
-to regular entries in the state document. Then, the relative path of each entry
-is combined with the root argument, and if the resulting file does not exist, the
-entry is removed.
-
-If no state information is needed, then the initialize and finalize actions are
-not needed and the build action can be used by itself without a state argument.
-Otherwise, the initialize action should be performed before building a set of files
-and the finalize action after building a set of files.  If the state information
-becomes incorrect for whatever reason, delete the state file and rebuild all files.
+During the clear action, the relative path of each entry is combined with the
+root argument, and if the resulting file does not exist, the entry is removed.
 
 
 Arguments
@@ -173,7 +157,7 @@ Arguments
 --state <file>
 
     OPTIONAL in build
-    REQUIRED in initialize and finalize
+    REQUIRED in clear
     This specifies the location of the state file.
 
 
