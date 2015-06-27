@@ -4,11 +4,50 @@ XML2HTML
 This python script is a simple HTML builder that reads XML files, applies
 an XSL tranform to the XML file, and saves the result out to an HTML file.
 
+Usage
+=====
+
+xml2html <action> <arguments> ...
+
+action:
+    initialize, build, finalize
+
+
+Actions
+=======
+
+There are three actions, initialize, build, and finalize.  The initialize
+and finalize actions are only needed if you want to track the state of various
+input documents and create an output state document.  This state can track a
+document title, summary, year, month, and day.
+
+For the initialize action, the state argument is requied and an encoding
+argument is optional.  For the finalize action, the state and root arguments
+are required and an encoding argument is optional.
+
+During the initialize action, the state file is created if it does not exist.
+If it does exist, any staging items are removed.
+
+During the build action, if a state file is specified, then the namepsace
+and xpath arguments are used to extract information from the input document
+and store this information along with the document relative path as a staging
+entry in the state document.
+
+During the finalize action, all staging entries in the state document are moved
+to regular entries in the state document. Then, the relative path of each entry
+is combined with the root argument, and if the resulting file does not exist, the
+entry is removed.
+
+If no state information is needed, then the initialize and finalize actions are
+not needed and the build action can be used by itself without a state argument.
+Otherwise, the initialize action should be performed before building a set of files
+and the finalize action after building a set of files.  If the state information
+becomes incorrect for whatever reason, delete the state file and rebuild all files.
+
 
 Arguments
 =========
 
--r <dir>
 --root <dir>
 
     REQUIRED
@@ -16,21 +55,18 @@ Arguments
     names for the input and output file names.
 
 
--i <file>
 --input <file>
 
     REQUIRED
     This specifies the input XML file to apply the transform to.
 
 
--o <file>
 --output <file>
 
     REQUIRED
     This specifies where to save the resulting HTML file
 
 
--t <file>
 --transform <file>
 
     REQUIRED
@@ -38,7 +74,6 @@ Arguments
     to generate the output.
 
 
--h <file>
 --header <file>
 
     OPTIONAL
@@ -47,7 +82,6 @@ Arguments
     This can be used to add a DOCTYPE to the output.
 
 
--f <file>
 --footer <file>
 
     OPTIONAL
@@ -55,7 +89,6 @@ Arguments
     leading and trailing whitespace will be stripped from the file when read.
 
 
--p <name=value>
 --property <name=value>
 
     OPTIONAL, MULTIPLE
@@ -63,7 +96,6 @@ Arguments
     properties for more information.
 
 
--e <encoding>
 --encoding <encoding>
 
     OPTIONAL, DEFAULT=utf-8
@@ -71,7 +103,6 @@ Arguments
     also the encoding used to read the input header and footer files.
 
 
--s
 --strip
 
     OPTIONAL, DEFAULT=False
@@ -131,6 +162,35 @@ Arguments
 
         pre, textarea, script, style
 
+
+--namespace <prefix>=<namespace>
+
+    OPTIONAL
+    This is used when building state information to make a prefix in the xpath
+    strings to a specific namespace.  This may be specified more than once.
+
+
+--state <file>
+
+    OPTIONAL in build
+    REQUIRED in initialize and finalize
+    This specifies the location of the state file.
+
+
+--title-xpath <xpath>
+--summary-xpath <xpath>
+--year-xpath <xpath>
+--month-xpath <xpath>
+--day-xpath <xpath>
+
+    
+    OPTIONAL
+    REQUIRED if --state is specified, else no state will be stored.  Summary is optional.
+    These arguments specify the xpath expression that is used to extract the specific item
+    of information from the input document.  For the title and summary, all resulting nodes
+    are joined with spaces.  For the year, month, and day, only the first resulting node
+    is used.
+    
 
 <name=value>
 
