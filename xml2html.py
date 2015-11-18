@@ -55,9 +55,7 @@ def handle_error(error, abort=True):
             data = (str(i.filename), str(i.line), str(i.column), str(i.message))
             result += '[{0}, {1}, {2}] {3}\n'.format(*data)
             #result += '[' + str(entry.filename) + ', ' + str(entry.line) + ', ' + str(entry.column) + '] ' + entry.message + '\n'
-        else:
-            result = str(error) + '\n'
-
+        
         write_output(result)
     else:
         write_output(str(error) + '\n')
