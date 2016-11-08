@@ -30,9 +30,6 @@ class SpecEntry(object):
         self._pre_template = None
         self._post_template = None
         self._template = None
-        self._pre_template_strip = False
-        self._post_template_strip = False
-        self._template_strip = False
         self._specfile = None
         self._text = None
 
@@ -59,15 +56,6 @@ class SpecFile(object):
 
             if ini.has_option(section, "template"):
                 entry._template = ini.get(section, "template").strip()
-
-            if ini.has_option(section, "pre-template-strip"):
-                entry._pre_template_strip = (ini.get(section, "pre-template-strip").strip().lower() == "true")
-            
-            if ini.has_option(section, "post-template-strip"):
-                entry._post_template_strip = (ini.get(section, "post-template-strip").strip().lower() == "true")
-            
-            if ini.has_option(section, "template-strip"):
-                entry._template_strip = (ini.get(section, "template-strip").strip().lower() == "true")
 
             if ini.has_option(section, "specfile"):
                 entry._specfile = ini.get(section, "specfile").strip()
@@ -196,8 +184,7 @@ class Builder(object):
                             os.path.dirname(filename),
                             entry._pre_template
                         ),
-                        params,
-                        entry._pre_template_strip
+                        params
                     )
 
                 if entry._template:
@@ -206,8 +193,7 @@ class Builder(object):
                             os.path.dirname(filename),
                             entry._template
                         ),
-                        params,
-                        entry._template_strip
+                        params
                     )
                 elif entry._specfile:
                     self.process_subnode(
@@ -229,8 +215,7 @@ class Builder(object):
                             os.path.dirname(filename),
                             entry._post_template
                         ),
-                        params,
-                        entry._post_template_strip
+                        params
                     )
 
             finally:
@@ -251,17 +236,13 @@ class Builder(object):
                 self._contents.append(child.tail)
 
 
-    def render_template(self, filename, context, strip):
+    def render_template(self, filename, context):
         """ Render a given template and append to the result. """
         renderer = mrbavii_lib_template.StringRenderer()
         template = self._env.load_file(filename)
         template.render(renderer, context)
 
-        contents = renderer.get()
-        if strip:
-            contents = contents.strip()
-        
-        self._contents.append(contents)
+        self._contents.append(renderer.get())
 
 
 
