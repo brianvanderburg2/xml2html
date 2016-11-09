@@ -245,6 +245,54 @@ class Builder(object):
         self._contents.append(renderer.get())
 
 
+def main():
+    """ Run the program. """
 
-test = Builder("input/test.xml", "input/test.ini")
-print test.build()
+    # Parse arguments
+    parser = argparse.ArgumentParser("Convert XML to HTML or other text output.")
+    parser.add_argument("-i", dest="input", required=True,
+        help="Input XML file.")
+    parser.add_argument("-o", dest="output", required=True,
+        help="Output file.")
+    parser.add_argument("-r", dest="root", required=True,
+        help="Root directory relative to output.")
+    parser.add_argument("-s", dest="spec", required=True,
+        help="Spec file.")
+    parser.add_argument("params", nargs="*",
+        help="name=value parameters to pass")
+
+    args = parser.parse_args()
+
+    # Prepare context
+    context = {}
+
+    # Relative path to root from output directory
+    toroot = os.path.relpath(args.root, os.path.dirname(args.output))
+    toroot = toroot.replace(os.sep, "/")
+    if not toroot.endswith("/"):
+        toroot = toroot + "/"
+
+    context["toroot"] = toroot
+
+    # Parameters passed in
+    if args.params:
+        for param in args.params:
+            parts = param.split("=", 1)
+            if len(parts) == 2:
+                name = parts[0].strip()
+                value = parts[1].strip()
+            else:
+                name = parts[0].strip()
+                value = True
+
+            context[name] = value
+
+    # Create our build and build
+    builder = Builder(args.input, args.spec, context)
+
+    print(builder.build())
+
+
+if __name__ == "__main__":
+    main()
+
