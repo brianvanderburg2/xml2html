@@ -6,8 +6,12 @@ __author__ = "Brian Allen Vanderburg II"
 import sys
 import os
 import re
-import codecs
 import argparse
+
+try:
+    from codecs import open
+except ImportError:
+    pass # Python3 open can directly handle encoding
 
 try:
     import xml.etree.cElementTree as ET
@@ -287,10 +291,18 @@ def main():
 
             context[name] = value
 
-    # Create our build and build
+    # Create our builder and build
     builder = Builder(args.input, args.spec, context)
+    contents = builder.build()
 
-    print(builder.build())
+    # Save our output file
+    outdir = os.path.dirname(args.output)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+
+    with open(args.output, "wt") as handle:
+        handle.write(contents)
+
 
 
 if __name__ == "__main__":
