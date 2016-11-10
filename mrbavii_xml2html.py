@@ -249,7 +249,7 @@ def main():
     """ Run the program. """
 
     # Parse arguments
-    parser = argparse.ArgumentParser("Convert XML to HTML or other text output.")
+    parser = argparse.ArgumentParser(description="Convert XML to HTML or other text output.")
     parser.add_argument("-i", dest="input", required=True,
         help="Input XML file.")
     parser.add_argument("-o", dest="output", required=True,
