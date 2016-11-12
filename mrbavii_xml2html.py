@@ -158,6 +158,14 @@ class XmlWrapper(mrbavii_lib_template.Library):
         return child
 
 
+class Lib(mrbavii_lib_template.Library):
+    """ A custom library for xml2html. """
+
+    def lib_esc(self, what, quote=False):
+        import cgi
+        return cgi.escape(what, quote)
+
+
 class Builder(object):
     """ A builder is responsible for building the output. """
 
@@ -171,6 +179,7 @@ class Builder(object):
         # Prepare default context and template
         context = {
             "lib": mrbavii_lib_template.StdLib(),
+            "xml2html": Lib()
         }
         context.update(extra)
         
