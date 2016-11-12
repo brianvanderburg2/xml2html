@@ -27,30 +27,51 @@ except ImportError:
 import mrbavii_lib_template
 
 
-class SpecEntry(object):
-    """ This class represents an entry in a spec file. """
+def split_tag(tag):
+    """ A helper function get split a tag into namespace and tag parts. """
+
+    if tag[0] == "{":
+        end = tag.find("}")
+        if end < 0:
+            pass # TODO: error
+
+        ns = tag[1:end]
+        tag = tag[end + 1:]
+    else:
+        ns = ""
+
+    return (ns, tag)
+
+
+class ControlEntry(object):
+    """ This class represents an entry in a control file. """
 
     def __init__(self):
         self._pre_template = None
         self._post_template = None
         self._template = None
-        self._specfile = None
+        self._control_file = None
+        self._control_prefix = ""
         self._text = None
 
 
-class SpecFile(object):
-    """ This class represents the content of a spec file. """
+class ControlFile(object):
+    """ This class represents the content of a control file. """
 
     def __init__(self, filename):
-        """ Load a spec file. """
-        self._specs = {}
+        """ Load a control file. """
+        self._controls = {}
+        self._namespaces = {}
 
         ini = SafeConfigParser()
         ini.read(filename)
 
         for section in ini.sections():
-            entry = SpecEntry()
-            self._specs[section.strip()] = entry
+            if section == ":namespaces:":
+                pass
+
+            entry = ControlEntry()
+            self._controls[section.strip()] = entry
 
             if ini.has_option(section, "pre-template"):
                 entry._pre_template = ini.get(section, "pre-template").strip()
@@ -61,15 +82,35 @@ class SpecFile(object):
             if ini.has_option(section, "template"):
                 entry._template = ini.get(section, "template").strip()
 
-            if ini.has_option(section, "specfile"):
-                entry._specfile = ini.get(section, "specfile").strip()
+            if ini.has_option(section, "control-file"):
+                entry._control_file = ini.get(section, "control-file").strip()
+
+            if ini.has_option(section, "control-prefix"):
+                entry._control_prefix = ini.get(section, "control-prefix").strip()
 
             if ini.has_option(section, "text"):
                 entry._text = (ini.get(section, "text").strip().lower() == "emit")
-        
-    def find(self, tagname):
+
+        if ini.has_section(":namespaces:"):
+            for (name, value) in ini.items(":namespaces:"):
+                self._namespaces[value.strip()] = name.strip()
+
+    def find(self, tag, control_prefix):
         """ Return the spec entry for the specified tag. """
-        return self._specs.get(tagname, None)
+
+        if control_prefix and not control_prefix.endswith("/"):
+            control_prefix += "/"
+
+        (ns, tagname) = split_tag(tag)
+        if ns:
+            if ns in self._namespaces:
+                token = control_prefix + self._namespaces[ns] + ":" + tagname
+            else:
+                token = control_prefix + "{" + ns + "}" + tagname
+        else:
+            token = control_prefix + tagname
+
+        return self._controls.get(token, None)
 
 
 class XmlWrapper(mrbavii_lib_template.Library):
@@ -78,15 +119,16 @@ class XmlWrapper(mrbavii_lib_template.Library):
     def __init__(self, node):
         """ Init the wrapper. """
         self._node = node
+        (self._ns, self._tagname) = split_tag(node.tag)
 
     def call_tag(self):
         return self._node.tag
 
     def call_ns(self):
-        pass
+        return self._ns
 
     def call_tagname(self):
-        pass
+        return self._tagname
 
     def call_text(self):
         return self._node.text
@@ -119,12 +161,12 @@ class XmlWrapper(mrbavii_lib_template.Library):
 class Builder(object):
     """ A builder is responsible for building the output. """
 
-    def __init__(self, infile, specfile, extra={}):
+    def __init__(self, infile, control_file, extra={}):
         """ Initialize a builder. """
 
         # Store parameters
         self._infile = infile
-        self._specfile = specfile
+        self._control_file = control_file
 
         # Prepare default context and template
         context = {
@@ -141,7 +183,7 @@ class Builder(object):
         # Default items
         self._text_emit_stack = [False]
 
-        self._specfiles = {}
+        self._control_files = {}
         self._contents = []
 
         self._params = {}
@@ -153,25 +195,25 @@ class Builder(object):
         xml = ET.parse(self._infile)
         self._params["xml"] = XmlWrapper(xml.getroot())
 
-        self.process_node(xml.getroot(), self._specfile)
+        self.process_node(xml.getroot(), self._control_file, "")
 
         return "".join(self._contents)
 
 
-    def get_specfile(self, filename):
-        """ Return a specfile to use. """
+    def get_control_file(self, filename):
+        """ Return a control file to use. """
         filename = os.path.abspath(filename)
-        if not filename in self._specfiles:
-            self._specfiles[filename] = SpecFile(filename)
+        if not filename in self._control_files:
+            self._control_files[filename] = ControlFile(filename)
 
-        return self._specfiles[filename]
+        return self._control_files[filename]
         
 
-    def process_node(self, node, filename):
+    def process_node(self, node, filename, control_prefix):
         """ Process a given node. """
 
-        spec = self.get_specfile(filename)
-        entry = spec.find(node.tag)
+        control = self.get_control_file(filename)
+        entry = control.find(node.tag, control_prefix)
 
         if entry:
             params = dict(self._params)
@@ -199,18 +241,20 @@ class Builder(object):
                         ),
                         params
                     )
-                elif entry._specfile:
+                elif entry._control_file:
                     self.process_subnode(
                         node,
                         os.path.join(
                             os.path.dirname(filename),
-                            entry._specfile
-                        )
+                            entry._control_file
+                        ),
+                        entry._control_prefix
                     )
                 else:
                     self.process_subnode(
                         node,
-                        filename
+                        filename,
+                        entry._control_prefix
                     )
 
                 if entry._post_template:
@@ -228,14 +272,14 @@ class Builder(object):
                     self._text_emit_stack.pop()
 
 
-    def process_subnode(self, node, filename):
+    def process_subnode(self, node, filename, control_prefix):
         """ Process a given node's subitems using the specfile. """
 
         if node.text and self._text_emit_stack[-1]:
             self._contents.append(node.text)
 
         for child in node:
-            self.process_node(child, filename)
+            self.process_node(child, filename, control_prefix)
             if child.tail and self._text_emit_stack[-1]:
                 self._contents.append(child.tail)
 
@@ -260,8 +304,8 @@ def main():
         help="Output file.")
     parser.add_argument("-r", dest="root", required=True,
         help="Root directory relative to output.")
-    parser.add_argument("-s", dest="spec", required=True,
-        help="Spec file.")
+    parser.add_argument("-c", dest="control", required=True,
+        help="Control file.")
     parser.add_argument("params", nargs="*",
         help="name=value parameters to pass")
 
@@ -292,7 +336,7 @@ def main():
             context[name] = value
 
     # Create our builder and build
-    builder = Builder(args.input, args.spec, context)
+    builder = Builder(args.input, args.control, context)
     contents = builder.build()
 
     # Save our output file
