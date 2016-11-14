@@ -53,10 +53,10 @@ class XmlWrapper(mrbavii_lib_template.Library):
         return self._tagname
 
     def call_text(self):
-        return self._node.text
+        return self._node.text if self._node.text else ""
 
     def call_tail(self):
-        return self._node.tail
+        return self._node.tail if self._node.tail else ""
 
     def call_alltext(self):
         return "".join(self._node.itertext())
