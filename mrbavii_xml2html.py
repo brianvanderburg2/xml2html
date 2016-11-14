@@ -87,6 +87,20 @@ class Lib(mrbavii_lib_template.Library):
         import cgi
         return cgi.escape(what, quote)
 
+    def lib_highlight(self, what, syntax, classprefix=""):
+        import pygments
+        import pygments.formatters
+        import pygments.lexers
+
+        lexer = pygments.lexers.get_lexer_by_name(syntax, stripall=True)
+        formatter = pygments.formatters.HtmlFormatter(
+            nowrap=True,
+            noclasses=False,
+            nobackground=True,
+            classprefix=classprefix)
+
+        result = pygments.highlight(what.strip(), lexer, formatter)
+        return result
 
 class Builder(object):
     """ A builder is responsible for building the output. """
