@@ -83,6 +83,11 @@ class XmlWrapper(mrbavii_lib_template.Library):
 class Lib(mrbavii_lib_template.Library):
     """ A custom library for xml2html. """
 
+    def __init__(self, fn):
+        mrbavii_lib_template.Library.__init__(self)
+
+        self._fn = fn
+
     def lib_esc(self, what, quote=False):
         import cgi
         return cgi.escape(what, quote)
@@ -102,6 +107,14 @@ class Lib(mrbavii_lib_template.Library):
         result = pygments.highlight(what.strip(), lexer, formatter)
         return result
 
+    def lib_highlight_file(self, where, syntax, classprefix=""):
+        fn = os.path.join(os.path.dirname(self._fn), where)
+
+        with open(fn, "rU") as handle:
+            what = handle.read()
+
+        return self.lib_highlight(what, syntax, classprefix)
+
 class Builder(object):
     """ A builder is responsible for building the output. """
 
@@ -115,7 +128,7 @@ class Builder(object):
         # Prepare default context and template
         context = {
             "lib": mrbavii_lib_template.StdLib(),
-            "xml2html": Lib()
+            "xml2html": Lib(infile)
         }
         context.update(extra)
         
