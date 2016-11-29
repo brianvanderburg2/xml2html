@@ -83,9 +83,10 @@ class XmlWrapper(mrbavii_lib_template.Library):
 class Lib(mrbavii_lib_template.Library):
     """ A custom library for xml2html. """
 
-    def __init__(self, fn):
+    def __init__(self):
         mrbavii_lib_template.Library.__init__(self)
 
+    def set_fn(self, fn):
         self._fn = fn
 
     def lib_esc(self, what, quote=False):
@@ -118,45 +119,50 @@ class Lib(mrbavii_lib_template.Library):
 class Builder(object):
     """ A builder is responsible for building the output. """
 
-    def __init__(self, infile, template, search, extra={}):
+    def __init__(self, template, search):
         """ Initialize a builder. """
 
         # Store parameters
-        self._infile = infile
         self._template = template
 
         # Prepare default context and template
-        context = {
+        self._lib = Lib()
+
+        self._context = {
             "lib": mrbavii_lib_template.StdLib(),
-            "xml2html": Lib(infile)
+            "xml2html": self._lib
         }
-        context.update(extra)
         
         loader = mrbavii_lib_template.FileSystemLoader(search)
         self._env = mrbavii_lib_template.Environment(
-            loader = loader,
-            context = context
+            loader = loader
         )
 
-        # Default items
-        self._contents = []
-        self._params = {}
 
-
-    def build(self):
+    def build(self, input, output, params):
         """ Build the output and return the result. """
         
-        xml = ET.parse(self._infile)
+        xml = ET.parse(input)
+        self._lib.set_fn(input)
 
-        params = {
+        our_params = dict(self._context)
+        our_params.update({
             "xml": XmlWrapper(xml.getroot())
-        }
+        })
+        our_params.update(params)
+
 
         renderer = mrbavii_lib_template.StringRenderer()
+        self._env.clear()
         template = self._env.load_file(self._template)
-        template.render(renderer, params)
+        template.render(renderer, our_params)
 
-        return renderer.get()
+        outdir = os.path.dirname(output)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+
+        with open(output, "wt") as handle:
+            handle.write(renderer.get())
 
 
 def main():
@@ -164,31 +170,23 @@ def main():
 
     # Parse arguments
     parser = argparse.ArgumentParser(description="Convert XML to HTML or other text output.")
-    parser.add_argument("-i", dest="input", required=True,
-        help="Input XML file.")
     parser.add_argument("-o", dest="output", required=True,
-        help="Output file.")
+        help="Output file or directory.")
     parser.add_argument("-r", dest="root", required=True,
-        help="Root directory relative to output.")
+        help="If output is file, output root, else if output is directory, input root.")
     parser.add_argument("-t", dest="template", required=True,
         help="Template file.")
     parser.add_argument("-s", dest="search", action="append", default=None, required=False,
         help="Template search path. May be specified multiple times.")
-    parser.add_argument("params", nargs="*",
+    parser.add_argument("-d", dest="params", action="append",
         help="name=value parameters to pass")
+    parser.add_argument("input", nargs="+",
+        help="Input XML files.")
 
     args = parser.parse_args()
 
     # Prepare context
     context = {}
-
-    # Relative path to root from output directory
-    toroot = os.path.relpath(args.root, os.path.dirname(args.output))
-    toroot = toroot.replace(os.sep, "/")
-    if not toroot.endswith("/"):
-        toroot = toroot + "/"
-
-    context["toroot"] = toroot
 
     # Parameters passed in
     if args.params:
@@ -203,18 +201,37 @@ def main():
 
             context[name] = value
 
-    # Create our builder and build
-    builder = Builder(args.input, args.template, args.search, context)
-    contents = builder.build()
 
-    # Save our output file
-    outdir = os.path.dirname(args.output)
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
+    # Create our builder
+    builder = Builder(args.template, args.search)
 
-    with open(args.output, "wt") as handle:
-        handle.write(contents)
+    if os.path.isdir(args.output):
+        for input in args.input:
+            # Relative path to input from root directory
+            relpath = os.path.relpath(input, args.root)
+            relpath = os.path.splitext(relpath)[0] + ".html"
+            output = os.path.join(args.output, relpath)
 
+            # Relative path to root from output directory
+            toroot = os.path.relpath(args.output, os.path.dirname(output))
+            toroot = toroot.replace(os.sep, "/")
+            if not toroot.endswith("/"):
+                toroot = toroot + "/"
+
+            context["toroot"] = toroot
+
+            builder.build(input, output, context)
+
+    else:
+        # Relative path to root from output directory
+        toroot = os.path.relpath(args.root, os.path.dirname(args.output))
+        toroot = toroot.replace(os.sep, "/")
+        if not toroot.endswith("/"):
+            toroot = toroot + "/"
+
+        context["toroot"] = toroot
+
+        builder.build(args.input[0], args.output, context)
 
 
 if __name__ == "__main__":
