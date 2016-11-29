@@ -118,7 +118,7 @@ class Lib(mrbavii_lib_template.Library):
 class Builder(object):
     """ A builder is responsible for building the output. """
 
-    def __init__(self, infile, template, extra={}):
+    def __init__(self, infile, template, search, extra={}):
         """ Initialize a builder. """
 
         # Store parameters
@@ -132,7 +132,7 @@ class Builder(object):
         }
         context.update(extra)
         
-        loader = mrbavii_lib_template.FileSystemLoader()
+        loader = mrbavii_lib_template.FileSystemLoader(search)
         self._env = mrbavii_lib_template.Environment(
             loader = loader,
             context = context
@@ -172,6 +172,8 @@ def main():
         help="Root directory relative to output.")
     parser.add_argument("-t", dest="template", required=True,
         help="Template file.")
+    parser.add_argument("-s", dest="search", action="append", default=None, required=False,
+        help="Template search path. May be specified multiple times.")
     parser.add_argument("params", nargs="*",
         help="name=value parameters to pass")
 
@@ -202,7 +204,7 @@ def main():
             context[name] = value
 
     # Create our builder and build
-    builder = Builder(args.input, args.template, context)
+    builder = Builder(args.input, args.template, args.search, context)
     contents = builder.build()
 
     # Save our output file
