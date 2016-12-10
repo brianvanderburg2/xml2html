@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import argparse
+import fnmatch
 
 try:
     from codecs import open
@@ -138,6 +139,11 @@ class Builder(object):
             loader = loader
         )
 
+    def log(self, input, output):
+        """ Write a log message. """
+
+        print("{0} -> {1}".format(input, output))
+
 
     def build(self, input, output, params):
         """ Build the output and return the result. """
@@ -161,9 +167,19 @@ class Builder(object):
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
 
+        self.log(input, output)
         with open(output, "wt") as handle:
             handle.write(renderer.get())
 
+def checktimes(source, target):
+    """ Check timestamps and return true to continue, false if up to date. """
+    if not os.path.isfile(target):
+        return True
+
+    stime = os.path.getmtime(source)
+    ttime = os.path.getmtime(target)
+
+    return stime > ttime
 
 def main():
     """ Run the program. """
@@ -171,16 +187,18 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Convert XML to HTML or other text output.")
     parser.add_argument("-o", dest="output", required=True,
-        help="Output file or directory.")
+        help="Output directory.")
     parser.add_argument("-r", dest="root", required=True,
-        help="If output is file, output root, else if output is directory, input root.")
+        help="Input root.")
     parser.add_argument("-t", dest="template", required=True,
         help="Template file.")
     parser.add_argument("-s", dest="search", action="append", default=None, required=False,
         help="Template search path. May be specified multiple times.")
-    parser.add_argument("-d", dest="params", action="append",
+    parser.add_argument("-D", dest="params", action="append",
         help="name=value parameters to pass")
-    parser.add_argument("input", nargs="+",
+    parser.add_argument("-w", dest="walk", default=None,
+        help="Walk the root directory.  Value is a glob pattern to match.")
+    parser.add_argument("inputs", nargs="*",
         help="Input XML files.")
 
     args = parser.parse_args()
@@ -201,37 +219,32 @@ def main():
 
             context[name] = value
 
+    # Inputs
+    inputs = list(args.inputs)
+    if args.walk:
+        for (dir, dirs, files) in os.walk(args.root):
+            extra = [os.path.join(dir, i) for i in files if fnmatch.fnmatch(i, args.walk)]
+            inputs.extend(extra)
 
     # Create our builder
     builder = Builder(args.template, args.search)
 
-    if os.path.isdir(args.output):
-        for input in args.input:
-            # Relative path to input from root directory
-            relpath = os.path.relpath(input, args.root)
-            relpath = os.path.splitext(relpath)[0] + ".html"
-            output = os.path.join(args.output, relpath)
+    for input in inputs:
+        # Relative path to input from root directory
+        relpath = os.path.relpath(input, args.root)
+        relpath = os.path.splitext(relpath)[0] + ".html"
+        output = os.path.join(args.output, relpath)
 
-            # Relative path to root from output directory
-            toroot = os.path.relpath(args.output, os.path.dirname(output))
-            toroot = toroot.replace(os.sep, "/")
-            if not toroot.endswith("/"):
-                toroot = toroot + "/"
-
-            context["toroot"] = toroot
-
-            builder.build(input, output, context)
-
-    else:
         # Relative path to root from output directory
-        toroot = os.path.relpath(args.root, os.path.dirname(args.output))
+        toroot = os.path.relpath(args.output, os.path.dirname(output))
         toroot = toroot.replace(os.sep, "/")
         if not toroot.endswith("/"):
             toroot = toroot + "/"
 
         context["toroot"] = toroot
 
-        builder.build(args.input[0], args.output, context)
+        if checktimes(input, output):
+            builder.build(input, output, context)
 
 
 if __name__ == "__main__":
