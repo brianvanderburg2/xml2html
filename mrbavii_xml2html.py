@@ -142,7 +142,7 @@ class Builder(object):
     def log(self, input, output):
         """ Write a log message. """
 
-        print("{0} -> {1}".format(input, output))
+        print("BUILD: {1} ({1})".format(input, output))
 
 
     def build(self, input, output, params):
