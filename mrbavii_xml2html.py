@@ -51,6 +51,9 @@ class XmlWrapper(mrbavii_lib_template.Library):
         self._ns = ns
         self._tagname = tag
 
+    def __bool__(self):
+        return True
+
     def call_tag(self):
         return self._node.tag
 
@@ -86,6 +89,9 @@ class XmlWrapper(mrbavii_lib_template.Library):
             child = XmlWrapper(child)
 
         return child
+
+    def lib_str(self):
+        return ET.tostring(self._node)
 
 
 class Lib(mrbavii_lib_template.Library):
@@ -144,7 +150,7 @@ class Builder(object):
                                 progdata.cmdline.s_month,
                                 progdata.cmdline.s_day,
                                 progdata.cmdline.s_title,
-                                progdata.cmdline.s_desc)
+                                progdata.cmdline.s_summary)
         else:
             self._state = None
 
@@ -229,13 +235,13 @@ class Builder(object):
 class State(object):
     """ Keep track of item states. """
 
-    def __init__(self, xpyear, xpmonth, xpday, xptitle, xpdesc):
+    def __init__(self, xpyear, xpmonth, xpday, xptitle, xpsummary):
         self._states = []
         self._xpyear = xpyear
         self._xpmonth = xpmonth
         self._xpday = xpday
         self._xptitle = xptitle
-        self._xpdesc = xpdesc
+        self._xpsummary = xpsummary
 
     def decode(self, root, relpath):
         """ Read the state from the input. """
@@ -258,19 +264,19 @@ class State(object):
             if not el is None:
                 day = int(el.text)
 
-        title = ""
+        title = None
         if self._xptitle:
             el = root.find(self._xptitle)
             if not el is None:
                 title = "".join(el.itertext())
 
-        desc = ""
-        if self._xpdesc:
-            el = root.find(self._xpdesc)
+        summary = None
+        if self._xpsummary:
+            el = root.find(self._xpsummary)
             if not el is None:
-                desc = "".join(el.itertext())
+                summary = XmlWrapper(el)
 
-        if year == 0 or month == 0 or day == 0 or title == "":
+        if year == 0 or month == 0 or day == 0 or title is None:
             return
 
         result = {
@@ -279,7 +285,7 @@ class State(object):
             "month": month,
             "day": day,
             "title": title,
-            "desc": desc
+            "summary": summary
         }
 
         self._states.append(result)
@@ -331,8 +337,8 @@ def main():
         help="XPATH to day element (value value of element is 1-31)")
     parser.add_argument("--state-title", dest="s_title",
         help="XPATH to title element")
-    parser.add_argument("--state-desc",dest="s_desc",
-        help="XPATH to description element")
+    parser.add_argument("--state-summary",dest="s_summary",
+        help="XPATH to summary element")
     parser.add_argument("--state-template", dest="s_template",
         help="XPATH to state template.")
     parser.add_argument("--state-file", dest="s_file",
