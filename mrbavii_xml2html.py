@@ -22,6 +22,13 @@ except ImportError:
 import mrbavii_lib_template
 
 
+class ProgData(object):
+    """ A generic wrapper for certain program data. """
+
+    def __init__(self):
+        self.cmdline = None
+
+
 class XmlWrapper(mrbavii_lib_template.Library):
     """ Class to wrap an XML node for the template engine. """
 
@@ -117,14 +124,29 @@ class Lib(mrbavii_lib_template.Library):
 
         return self.lib_highlight(what, syntax, classprefix)
 
+    def lib_xml(self, what):
+        root = ET.fromstring(what)
+        return XmlWrapper(root)
+
+
 class Builder(object):
     """ A builder is responsible for building the output. """
 
-    def __init__(self, template, search):
+    def __init__(self, progdata):
         """ Initialize a builder. """
 
         # Store parameters
-        self._template = template
+        self._build_template = progdata.cmdline.template
+        self._state_template = progdata.cmdline.s_template
+
+        if self._state_template:
+            self._state = State(progdata.cmdline.s_year,
+                                progdata.cmdline.s_month,
+                                progdata.cmdline.s_day,
+                                progdata.cmdline.s_title,
+                                progdata.cmdline.s_desc)
+        else:
+            self._state = None
 
         # Prepare default context and template
         self._lib = Lib()
@@ -134,42 +156,140 @@ class Builder(object):
             "xml2html": self._lib
         }
         
-        loader = mrbavii_lib_template.FileSystemLoader(search)
+        loader = mrbavii_lib_template.FileSystemLoader(progdata.cmdline.search)
         self._env = mrbavii_lib_template.Environment(
             loader = loader
         )
 
-    def log(self, input, output):
+    def log(self, action, input, output=None):
         """ Write a log message. """
 
-        print("BUILD: {1} ({1})".format(input, output))
+        if output:
+            print("{0}: {2} ({1})".format(action, input, output))
+        else:
+            print("{0}: {1}".format(action, input))
 
 
-    def build(self, input, output, params):
+    def build(self, input, output, params, generate):
         """ Build the output and return the result. """
         
+        self.log("PARSE", input)
         xml = ET.parse(input)
-        self._lib.set_fn(input)
+        root = xml.getroot()
 
-        our_params = dict(self._context)
-        our_params.update({
-            "xml": XmlWrapper(xml.getroot())
-        })
+        if self._state:
+            self._state.decode(root, params["relpath"])
+
+        if not generate:
+            return
+
+        our_params = {
+            "xml": XmlWrapper(root)
+        }
+        our_params.update(params)
+        self.build_from_data(self._build_template, input, output, our_params)
+
+    def build_state(self, input, output, params):
+        """ Build the state file. """
+
+        if not self._state:
+            return
+
+        sorted_states = self._state.get()
+
+        our_params = {
+            "states": sorted_states
+        }
         our_params.update(params)
 
+        self.build_from_data(self._state_template, input, output, our_params)
+
+    def build_from_data(self, template, input, output, params):
+        """ Build from a data set. """
+
+        our_params = dict(self._context)
+        our_params.update(params)
+
+        self._lib.set_fn(input)
 
         renderer = mrbavii_lib_template.StringRenderer()
         self._env.clear()
-        template = self._env.load_file(self._template)
-        template.render(renderer, our_params)
+        tmpl = self._env.load_file(template)
+        tmpl.render(renderer, our_params)
 
         outdir = os.path.dirname(output)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
 
-        self.log(input, output)
+        self.log("BUILD", input, output)
         with open(output, "wt") as handle:
             handle.write(renderer.get())
+
+
+class State(object):
+    """ Keep track of item states. """
+
+    def __init__(self, xpyear, xpmonth, xpday, xptitle, xpdesc):
+        self._states = []
+        self._xpyear = xpyear
+        self._xpmonth = xpmonth
+        self._xpday = xpday
+        self._xptitle = xptitle
+        self._xpdesc = xpdesc
+
+    def decode(self, root, relpath):
+        """ Read the state from the input. """
+
+        year = 0
+        if self._xpyear:
+            el = root.find(self._xpyear)
+            if not el is None:
+                year = int(el.text)
+
+        month = 0
+        if self._xpmonth:
+            el = root.find(self._xpmonth)
+            if not el is None:
+                month = int(el.text)
+
+        day = 0
+        if self._xpday:
+            el = root.find(self._xpday)
+            if not el is None:
+                day = int(el.text)
+
+        title = ""
+        if self._xptitle:
+            el = root.find(self._xptitle)
+            if not el is None:
+                title = "".join(el.itertext())
+
+        desc = ""
+        if self._xpdesc:
+            el = root.find(self._xpdesc)
+            if not el is None:
+                desc = "".join(el.itertext())
+
+        if year == 0 or month == 0 or day == 0 or title == "":
+            return
+
+        result = {
+            "relpath": relpath,
+            "year": year,
+            "month": month,
+            "day": day,
+            "title": title,
+            "desc": desc
+        }
+
+        self._states.append(result)
+
+    def get(self):
+        """ Return the sorted list of states. """
+        import operator
+
+        return sorted(self._states, key=operator.itemgetter("year", "month", "day"), reverse=True)
+
 
 def checktimes(source, target):
     """ Check timestamps and return true to continue, false if up to date. """
@@ -183,6 +303,8 @@ def checktimes(source, target):
 
 def main():
     """ Run the program. """
+    progdata = ProgData()
+
 
     # Parse arguments
     parser = argparse.ArgumentParser(description="Convert XML to HTML or other text output.")
@@ -201,7 +323,24 @@ def main():
     parser.add_argument("inputs", nargs="*",
         help="Input XML files.")
 
+    parser.add_argument("--state-year", dest="s_year",
+        help="XPATH to year element")
+    parser.add_argument("--state-month", dest="s_month",
+        help="XPATH to month element (valid value of element is 1-12)")
+    parser.add_argument("--state-day", dest="s_day",
+        help="XPATH to day element (value value of element is 1-31)")
+    parser.add_argument("--state-title", dest="s_title",
+        help="XPATH to title element")
+    parser.add_argument("--state-desc",dest="s_desc",
+        help="XPATH to description element")
+    parser.add_argument("--state-template", dest="s_template",
+        help="XPATH to state template.")
+    parser.add_argument("--state-file", dest="s_file",
+        help="Pseudo-file for the state.  This file does not get generated. "
+             "It is used to determine the relative path to the root.")
+
     args = parser.parse_args()
+    progdata.cmdline = args
 
     # Prepare context
     context = {}
@@ -226,8 +365,11 @@ def main():
             extra = [os.path.join(dir, i) for i in files if fnmatch.fnmatch(i, args.walk)]
             inputs.extend(extra)
 
+    if args.s_file: # Add pseudo-input for state file
+        inputs.append(args.s_file)
+
     # Create our builder
-    builder = Builder(args.template, args.search)
+    builder = Builder(progdata)
 
     for input in inputs:
         # Relative path to input from root directory
@@ -241,10 +383,15 @@ def main():
         if not toroot.endswith("/"):
             toroot = toroot + "/"
 
+        # Set up our data
         context["toroot"] = toroot
+        context["relpath"] = relpath
 
-        if checktimes(input, output):
-            builder.build(input, output, context)
+        if args.s_file and input == args.s_file:
+            builder.build_state(input, output, context)
+        else:
+            realbuild = checktimes(input, output)
+            builder.build(input, output, context, realbuild)
 
 
 if __name__ == "__main__":
