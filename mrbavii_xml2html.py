@@ -150,6 +150,7 @@ class Builder(object):
                                 progdata.cmdline.s_month,
                                 progdata.cmdline.s_day,
                                 progdata.cmdline.s_title,
+                                progdata.cmdline.s_tags,
                                 progdata.cmdline.s_summary)
         else:
             self._state = None
@@ -202,9 +203,16 @@ class Builder(object):
             return
 
         sorted_states = self._state.get()
+        tags = sorted(self._state.tags())
+
+        sorted_state_tags = {}
+        for tag in tags:
+            sorted_state_tags[tag] = filter(lambda i: tag in i["tags"], sorted_states)
 
         our_params = {
-            "states": sorted_states
+            "allstates": sorted_states,
+            "tags": tags,
+            "tagstates": sorted_state_tags
         }
         our_params.update(params)
 
@@ -249,13 +257,16 @@ class Builder(object):
 class State(object):
     """ Keep track of item states. """
 
-    def __init__(self, xpyear, xpmonth, xpday, xptitle, xpsummary):
+    def __init__(self, xpyear, xpmonth, xpday, xptitle, xptags, xpsummary):
         self._states = []
         self._xpyear = xpyear
         self._xpmonth = xpmonth
         self._xpday = xpday
         self._xptitle = xptitle
+        self._xptags = xptags
         self._xpsummary = xpsummary
+
+        self._tags = set()
 
     def decode(self, root, relpath):
         """ Read the state from the input. """
@@ -264,25 +275,32 @@ class State(object):
         if self._xpyear:
             el = root.find(self._xpyear)
             if not el is None:
-                year = int(el.text)
+                year = int(el.text) if el.text else 0
 
         month = 0
         if self._xpmonth:
             el = root.find(self._xpmonth)
             if not el is None:
-                month = int(el.text)
+                month = int(el.text) if el.text else 0
 
         day = 0
         if self._xpday:
             el = root.find(self._xpday)
             if not el is None:
-                day = int(el.text)
+                day = int(el.text) if el.text else 0
 
         title = None
         if self._xptitle:
             el = root.find(self._xptitle)
             if not el is None:
                 title = "".join(el.itertext())
+
+        tags = set()
+        if self._xptags:
+            el = root.find(self._xptags)
+            if not el is None:
+                tags = set(el.text.split() if el.text else [])
+        self._tags.update(tags)
 
         summary = None
         if self._xpsummary:
@@ -299,6 +317,7 @@ class State(object):
             "month": month,
             "day": day,
             "title": title,
+            "tags": tags,
             "summary": summary
         }
 
@@ -309,6 +328,10 @@ class State(object):
         import operator
 
         return sorted(self._states, key=operator.itemgetter("year", "month", "day"), reverse=True)
+
+    def tags(self):
+        """ Return all tags. """
+        return self._tags
 
 
 def checktimes(source, target):
@@ -351,6 +374,8 @@ def main():
         help="XPATH to day element (value value of element is 1-31)")
     parser.add_argument("--state-title", dest="s_title",
         help="XPATH to title element")
+    parser.add_argument("--state-tags", dest="s_tags",
+        help="XPATH to tags element")
     parser.add_argument("--state-summary",dest="s_summary",
         help="XPATH to summary element")
     parser.add_argument("--state-template", dest="s_template",
