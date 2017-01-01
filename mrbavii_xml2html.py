@@ -231,6 +231,20 @@ class Builder(object):
         with open(output, "wt") as handle:
             handle.write(renderer.get())
 
+        sections = renderer.get_sections()
+        for s in sections:
+            if not s.startswith("file:"):
+                continue
+
+            output = s[5:]
+            if '/' in output or os.sep in output:
+                continue # TODO error, should not define directory, only filename
+
+            output = os.path.join(outdir, output)
+            self.log("BUILD", input, output)
+            with open(output, "wt") as handle:
+                handle.write(renderer.get_section(s))
+
 
 class State(object):
     """ Keep track of item states. """
