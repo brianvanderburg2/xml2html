@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 __author__ = "Brian Allen Vanderburg II"
+__version__ = "0.3"
 
 
 import sys
@@ -20,13 +21,6 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 import mrbavii_lib_template
-
-
-class ProgData(object):
-    """ A generic wrapper for certain program data. """
-
-    def __init__(self):
-        self.cmdline = None
 
 
 class XmlWrapper(mrbavii_lib_template.Library):
@@ -101,7 +95,10 @@ class Lib(mrbavii_lib_template.Library):
         mrbavii_lib_template.Library.__init__(self)
 
     def set_fn(self, fn):
-        self._fn = fn
+        if os.path.isdir(fn):
+            self._dir = fn
+        else:
+            self._dir = os.path.dirname(fn)
 
     def lib_esc(self, what, quote=False):
         import cgi
@@ -123,7 +120,7 @@ class Lib(mrbavii_lib_template.Library):
         return result
 
     def lib_highlight_file(self, where, syntax, classprefix=""):
-        fn = os.path.join(os.path.dirname(self._fn), where)
+        fn = os.path.join(self._dir, where)
 
         with open(fn, "rU") as handle:
             what = handle.read()
@@ -133,126 +130,6 @@ class Lib(mrbavii_lib_template.Library):
     def lib_xml(self, what):
         root = ET.fromstring(what)
         return XmlWrapper(root)
-
-
-class Builder(object):
-    """ A builder is responsible for building the output. """
-
-    def __init__(self, progdata):
-        """ Initialize a builder. """
-
-        # Store parameters
-        self._build_template = progdata.cmdline.template
-        self._state_template = progdata.cmdline.s_template
-
-        if self._state_template:
-            self._state = State(progdata.cmdline.s_year,
-                                progdata.cmdline.s_month,
-                                progdata.cmdline.s_day,
-                                progdata.cmdline.s_title,
-                                progdata.cmdline.s_tags,
-                                progdata.cmdline.s_summary)
-        else:
-            self._state = None
-
-        # Prepare default context and template
-        self._lib = Lib()
-
-        self._context = {
-            "lib": mrbavii_lib_template.StdLib(),
-            "xml2html": self._lib
-        }
-        
-        loader = mrbavii_lib_template.FileSystemLoader(progdata.cmdline.search)
-        self._env = mrbavii_lib_template.Environment(
-            loader = loader
-        )
-
-    def log(self, action, input, output=None):
-        """ Write a log message. """
-
-        if output:
-            print("{0}: {2} ({1})".format(action, input, output))
-        else:
-            print("{0}: {1}".format(action, input))
-
-
-    def build(self, input, output, params, generate):
-        """ Build the output and return the result. """
-        
-        self.log("PARSE", input)
-        xml = ET.parse(input)
-        root = xml.getroot()
-
-        if self._state:
-            self._state.decode(root, params["relpath"])
-
-        if not generate:
-            return
-
-        our_params = {
-            "xml": XmlWrapper(root)
-        }
-        our_params.update(params)
-        self.build_from_data(self._build_template, input, output, our_params)
-
-    def build_state(self, input, output, params):
-        """ Build the state file. """
-
-        if not self._state:
-            return
-
-        sorted_states = self._state.get()
-        tags = sorted(self._state.tags())
-
-        sorted_state_tags = {}
-        for tag in tags:
-            sorted_state_tags[tag] = filter(lambda i: tag in i["tags"], sorted_states)
-
-        our_params = {
-            "allstates": sorted_states,
-            "tags": tags,
-            "tagstates": sorted_state_tags
-        }
-        our_params.update(params)
-
-        self.build_from_data(self._state_template, input, output, our_params)
-
-    def build_from_data(self, template, input, output, params):
-        """ Build from a data set. """
-
-        our_params = dict(self._context)
-        our_params.update(params)
-
-        self._lib.set_fn(input)
-
-        renderer = mrbavii_lib_template.StringRenderer()
-        self._env.clear()
-        tmpl = self._env.load_file(template)
-        tmpl.render(renderer, our_params)
-
-        outdir = os.path.dirname(output)
-        if not os.path.isdir(outdir):
-            os.makedirs(outdir)
-
-        self.log("BUILD", input, output)
-        with open(output, "wt") as handle:
-            handle.write(renderer.get())
-
-        sections = renderer.get_sections()
-        for s in sections:
-            if not s.startswith("file:"):
-                continue
-
-            output = s[5:]
-            if '/' in output or os.sep in output:
-                continue # TODO error, should not define directory, only filename
-
-            output = os.path.join(outdir, output)
-            self.log("BUILD", input, output)
-            with open(output, "wt") as handle:
-                handle.write(renderer.get_section(s))
-
 
 class State(object):
     """ Keep track of item states. """
@@ -331,114 +208,337 @@ class State(object):
 
     def tags(self):
         """ Return all tags. """
-        return self._tags
+        return sorted(self._tags)
+        
+
+# Reusable section below #
+
+class Command(object):
+    """ Base class for a command. """
+    command_name="name_of_command"
+    command_desc="What command does"
+
+    @staticmethod
+    def find_subclasses(cls=None, result=None):
+        """ Find all subclasses. """
+        if cls is None:
+            cls = Command
+
+        if result is None:
+            result = []
+
+        subclasses = cls.__subclasses__()
+        result.extend(subclasses)
+
+        for subclass in subclasses:
+            Command.find_subclasses(subclass, result)
+        
+        return result
+
+    @staticmethod
+    def add_args(parser):
+        """ Add arguments to the parser. """
+        pass
 
 
-def checktimes(source, target):
-    """ Check timestamps and return true to continue, false if up to date. """
-    if not os.path.isfile(target):
-        return True
+class App(object):
+    """ Represent our application object. """
+    app_desc="What app does"
 
-    stime = os.path.getmtime(source)
-    ttime = os.path.getmtime(target)
+    @staticmethod
+    def add_args(parser):
+        """ Allow for adding common args before command args """
+        pass
 
-    return stime > ttime
+    def init(self):
+        """ Perform common initialization before executing command. """
+        pass
 
-def main():
-    """ Run the program. """
-    progdata = ProgData()
+    def run(self):
+        """ execute the command. """
+        pass
+
+    def cleanup(self):
+        """ Perform cleanup. """
+        pass
+
+    @classmethod 
+    def run_app(cls):
+        """ Run the application. """
+
+        app = cls()
+
+        # Argument parser
+        parser = argparse.ArgumentParser(description=cls.app_desc)
+        app.add_args(parser)
+
+        # Determine available commands
+        cmd_classes = Command.find_subclasses()
+        commands = {}
+
+        if cmd_classes:
+            subparsers = parser.add_subparsers(dest="command")
+            for cmd in cmd_classes:
+                cmd_parser = subparsers.add_parser(cmd.command_name,
+                                                   description=cmd.command_desc)
+                cmd.add_args(cmd_parser)
+
+                commands[cmd.command_name] = cmd
+
+        # Parse the arguments
+        app.args = parser.parse_args()
+
+        # Run the application
+        app.init()
+
+        if cmd_classes:
+            cmd_class = commands[app.args.command]
+            cmd_instance = cmd_class()
+            cmd_instance.app = app
+            cmd_instance.run()
+        else:
+            app.run()
+        app.cleanup()
+
+# Reusable section above #
 
 
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="Convert XML to HTML or other text output.")
-    parser.add_argument("-o", dest="output", required=True,
-        help="Output directory.")
-    parser.add_argument("-r", dest="root", required=True,
-        help="Input root.")
-    parser.add_argument("-t", dest="template", required=True,
-        help="Template file.")
-    parser.add_argument("-s", dest="search", action="append", default=None, required=False,
-        help="Template search path. May be specified multiple times.")
-    parser.add_argument("-D", dest="params", action="append",
-        help="name=value parameters to pass")
-    parser.add_argument("-w", dest="walk", default=None,
-        help="Walk the root directory.  Value is a glob pattern to match.")
-    parser.add_argument("inputs", nargs="*",
-        help="Input XML files.")
+# App
 
-    parser.add_argument("--state-year", dest="s_year",
-        help="XPATH to year element")
-    parser.add_argument("--state-month", dest="s_month",
-        help="XPATH to month element (valid value of element is 1-12)")
-    parser.add_argument("--state-day", dest="s_day",
-        help="XPATH to day element (value value of element is 1-31)")
-    parser.add_argument("--state-title", dest="s_title",
-        help="XPATH to title element")
-    parser.add_argument("--state-tags", dest="s_tags",
-        help="XPATH to tags element")
-    parser.add_argument("--state-summary",dest="s_summary",
-        help="XPATH to summary element")
-    parser.add_argument("--state-template", dest="s_template",
-        help="XPATH to state template.")
-    parser.add_argument("--state-file", dest="s_file",
-        help="Pseudo-file for the state.  This file does not get generated. "
-             "It is used to determine the relative path to the root.")
+class Xml2HtmlApp(App):
+    app_desc = "Build HTML output from XML files"
 
-    args = parser.parse_args()
-    progdata.cmdline = args
+    @staticmethod
+    def add_args(parser):
+        """ Add common arguments. """
+        pass
 
-    # Prepare context
-    context = {}
+    def init(self):
+        """ Perform some initial stuff. """
 
-    # Parameters passed in
-    if args.params:
-        for param in args.params:
-            parts = param.split("=", 1)
-            if len(parts) == 2:
-                name = parts[0].strip()
-                value = parts[1].strip()
+        # Prepare our context
+        context = {}
+
+        if self.args.params:
+            for param in self.args.params:
+                parts = param.split("=", 1)
+                if len(parts) == 2:
+                    name = parts[0].strip()
+                    value = parts[1].strip()
+                else:
+                    name = parts[0].strip()
+                    value = True
+
+                context[name] = value
+
+        context["lib"] = mrbavii_lib_template.StdLib()
+        context["xml2html"] = self._lib = Lib()
+
+        self.context = context
+
+        # Template
+        loader = mrbavii_lib_template.FileSystemLoader(self.args.search)
+        self.env = mrbavii_lib_template.Environment(loader=loader)
+
+    def log(self, action, input, output=None):
+        """ Write a log message. """
+
+        if output:
+            print("{0}: {2} ({1})".format(action, input, output))
+        else:
+            print("{0}: {1}".format(action, input))
+
+    def build_from_data(self, input, output, context):
+        """ Build from a data set. """
+
+        args = self.args
+
+        # Prepare data set
+        our_context = dict(self.context)
+        our_context.update(context)
+
+        self._lib.set_fn(input)
+
+        # Create renderer and load/render template
+        renderer = mrbavii_lib_template.StringRenderer()
+        self.env.clear()
+        tmpl = self.env.load_file(args.template)
+        tmpl.render(renderer, our_context)
+
+        # Save output
+        outdir = os.path.dirname(output)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+
+        if self.checktimes(input, output):
+            self.log("BUILD", input, output)
+            with open(output, "wt") as handle:
+                handle.write(renderer.get())
+        else:
+            self.log("NOCHG", input, output)
+
+        sections = renderer.get_sections()
+        for s in sections:
+            if not s.startswith("file:"):
+                continue
+
+            output = s[5:]
+            if '/' in output or os.sep in output:
+                continue # TODO error, should not define directory, only filename
+
+            if self.checktimes(input, output):
+                output = os.path.join(outdir, output)
+                self.log("BUILD", input, output)
+                with open(output, "wt") as handle:
+                    handle.write(renderer.get_section(s))
             else:
-                name = parts[0].strip()
-                value = True
+                self.log("NOCHG", input, output)
 
-            context[name] = value
+    def checktimes(self, input, output):
+        """ Check timestamps and return true to continue, false if up to date. """
+        if not os.path.isfile(output):
+            return True
 
-    # Inputs
-    inputs = list(args.inputs)
-    if args.walk:
-        for (dir, dirs, files) in os.walk(args.root):
-            extra = [os.path.join(dir, i) for i in files if fnmatch.fnmatch(i, args.walk)]
-            inputs.extend(extra)
+        stime = os.path.getmtime(input)
+        ttime = os.path.getmtime(output)
 
-    if args.s_file: # Add pseudo-input for state file
-        inputs.append(args.s_file)
+        return stime > ttime
 
-    # Create our builder
-    builder = Builder(progdata)
+# Scan
 
-    for input in inputs:
-        # Relative path to input from root directory
-        relpath = os.path.relpath(input, args.root)
-        relpath = os.path.splitext(relpath)[0] + ".html"
-        output = os.path.join(args.output, relpath)
+class Scan(Command):
+    command_name = "scan"
+    command_desc = "Scan XML files to create state files."
+    
+    @staticmethod
+    def add_args(parser):
+        """ Add arguments for the scanner. """
+        parser.add_argument("-o", dest="output", required=True,
+            help="Output main state file.")
+        parser.add_argument("-r", dest="root", required=True,
+            help="Input root.")
+        parser.add_argument("-t", dest="template", required=True,
+            help="Template file.")
+        parser.add_argument("-s", dest="search", action="append", default=None, required=False,
+            help="Template search path. May be specified multiple times.")
+        parser.add_argument("-D", dest="params", action="append",
+            help="name=value parameters to pass")
 
-        # Relative path to root from output directory
-        toroot = os.path.relpath(args.output, os.path.dirname(output))
+        parser.add_argument("--state-year", dest="s_year",
+            help="XPATH to year element")
+        parser.add_argument("--state-month", dest="s_month",
+            help="XPATH to month element (valid value of element is 1-12)")
+        parser.add_argument("--state-day", dest="s_day",
+            help="XPATH to day element (value value of element is 1-31)")
+        parser.add_argument("--state-title", dest="s_title",
+            help="XPATH to title element")
+        parser.add_argument("--state-tags", dest="s_tags",
+            help="XPATH to tags element")
+        parser.add_argument("--state-summary",dest="s_summary",
+            help="XPATH to summary element")
+        
+        parser.add_argument("inputs", nargs="*",
+            help="Input XML files.")
+
+    def run(self):
+        """ Execute the command. """
+
+        app = self.app
+        args = app.args
+        state = State(args.s_year,
+                      args.s_month,
+                      args.s_day,
+                      args.s_title,
+                      args.s_tags,
+                      args.s_summary)
+
+        for input in args.inputs:
+            # Determine relative path
+            relpath = os.path.relpath(input, args.root)
+
+            app.log("SCAN", input)
+            xml = ET.parse(input)
+            root = xml.getroot()
+
+            state.decode(root, relpath)
+
+        # Now we have all our states
+        sorted_states = state.get()
+        sorted_tags = state.tags()
+        sorted_state_tags = {}
+        for tag in sorted_tags:
+            sorted_state_tags[tag] = filter(lambda i: tag in i["tags"], sorted_states)
+
+        # Determine path to root
+        toroot = os.path.relpath(args.root, os.path.dirname(args.output))
         toroot = toroot.replace(os.sep, "/")
         if not toroot.endswith("/"):
             toroot = toroot + "/"
+        
 
-        # Set up our data
-        context["toroot"] = toroot
-        context["relpath"] = relpath
+        context = {
+            "allstates": sorted_states,
+            "tags": sorted_tags,
+            "tagstates": sorted_state_tags,
+            "toroot": toroot
+        }
 
-        if args.s_file and input == args.s_file:
-            builder.build_state(input, output, context)
-        else:
-            realbuild = checktimes(input, output)
-            builder.build(input, output, context, realbuild)
+        app.build_from_data(args.root, args.output, context)
+
+# Build
+
+class Build(Command):
+    command_name = "build"
+    command_desc = "Build output from XML files"
+
+    @staticmethod
+    def add_args(parser):
+        """ Add arguments for the parser. """
+        parser.add_argument("-o", dest="output", required=True,
+            help="Output directory.")
+        parser.add_argument("-r", dest="root", required=True,
+            help="Input root.")
+        parser.add_argument("-t", dest="template", required=True,
+            help="Template file.")
+        parser.add_argument("-s", dest="search", action="append", default=None, required=False,
+            help="Template search path. May be specified multiple times.")
+        parser.add_argument("-D", dest="params", action="append",
+            help="name=value parameters to pass")
+        parser.add_argument("inputs", nargs="*",
+            help="Input XML files.")
+
+    def run(self):
+        """ Execute the command. """
+
+        app = self.app
+        args = app.args
+
+        for input in args.inputs:
+            # Determine relative path and root
+            relpath = os.path.relpath(input, args.root)
+            relpath = os.path.splitext(relpath)[0] + ".html"
+            output = os.path.join(args.output, relpath)
+
+            # Determine path to root
+            toroot = os.path.relpath(args.output, os.path.dirname(output))
+            toroot = toroot.replace(os.sep, "/")
+            if not toroot.endswith("/"):
+                toroot = toroot + "/"
+
+            # Load XML
+            app.log("PARSE", input)
+            xml = ET.parse(input)
+            root = xml.getroot()
+
+            context = {
+                "toroot": toroot,
+                "relpath": relpath,
+                "xml": XmlWrapper(root)
+            }
+
+            app.build_from_data(input, output, context)
 
 
 if __name__ == "__main__":
-    main()
+    Xml2HtmlApp.run_app()
 
