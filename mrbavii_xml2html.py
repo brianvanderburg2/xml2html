@@ -20,10 +20,10 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET
 
-import mrbavii_lib_template
+from mrbaviirc import template
 
 
-class XmlWrapper(mrbavii_lib_template.Library):
+class XmlWrapper(template.Library):
     """ Class to wrap an XML node for the template engine. """
 
     def __init__(self, node):
@@ -88,11 +88,11 @@ class XmlWrapper(mrbavii_lib_template.Library):
         return ET.tostring(self._node)
 
 
-class Lib(mrbavii_lib_template.Library):
+class Lib(template.Library):
     """ A custom library for xml2html. """
 
     def __init__(self):
-        mrbavii_lib_template.Library.__init__(self)
+        template.Library.__init__(self)
 
     def set_fn(self, fn):
         if os.path.isdir(fn):
@@ -331,14 +331,14 @@ class Xml2HtmlApp(App):
 
                 context[name] = value
 
-        context["lib"] = mrbavii_lib_template.StdLib()
+        context["lib"] = template.StdLib()
         context["xml2html"] = self._lib = Lib()
 
         self.context = context
 
         # Template
-        loader = mrbavii_lib_template.FileSystemLoader(self.args.search)
-        self.env = mrbavii_lib_template.Environment(loader=loader)
+        loader = template.SearchPathLoader(self.args.search)
+        self.env = template.Environment(loader=loader)
 
     def log(self, action, input, output=None):
         """ Write a log message. """
@@ -360,7 +360,7 @@ class Xml2HtmlApp(App):
         self._lib.set_fn(input)
 
         # Create renderer and load/render template
-        renderer = mrbavii_lib_template.StringRenderer()
+        renderer = template.StringRenderer()
         self.env.clear()
         tmpl = self.env.load_file(args.template)
         tmpl.render(renderer, our_context)
