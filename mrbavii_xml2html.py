@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __author__ = "Brian Allen Vanderburg II"
-__version__ = "0.3"
+__version__ = "0.4"
 
 
 import sys
@@ -9,6 +9,7 @@ import os
 import re
 import argparse
 import fnmatch
+import io
 
 try:
     from codecs import open
@@ -404,6 +405,16 @@ class Xml2HtmlApp(App):
 
         return stime > ttime
 
+#helper
+
+def readlines(fn):
+    with io.open(fn, "rt", newline=None) as handle:
+        for line in handle:
+            line = line.rstrip("\n")
+            if line and line[0:1] != "#":
+                yield line
+
+
 # Scan
 
 class Scan(Command):
@@ -437,6 +448,8 @@ class Scan(Command):
         parser.add_argument("--state-summary",dest="s_summary",
             help="XPATH to summary element")
         
+        parser.add_argument("-f", dest="files", action="append", default=None, required=False,
+            help="Filename(s) containing a list of files, one per line, to use as inputs.")
         parser.add_argument("inputs", nargs="*",
             help="Input XML files.")
 
@@ -452,7 +465,13 @@ class Scan(Command):
                       args.s_tags,
                       args.s_summary)
 
-        for input in args.inputs:
+        inputs = []
+        if args.files:
+            for file in args.files:
+                inputs.extend(readlines(file))
+        inputs.extend(args.inputs)
+
+        for input in inputs:
             # Determine relative path
             relpath = os.path.relpath(input, args.root)
 
@@ -504,6 +523,9 @@ class Build(Command):
             help="Template search path. May be specified multiple times.")
         parser.add_argument("-D", dest="params", action="append",
             help="name=value parameters to pass")
+
+        parser.add_argument("-f", dest="files", action="append", default=None, required=False,
+            help="Filename(s) containing a list of files, one per line, to use as inputs.")
         parser.add_argument("inputs", nargs="*",
             help="Input XML files.")
 
@@ -513,7 +535,13 @@ class Build(Command):
         app = self.app
         args = app.args
 
-        for input in args.inputs:
+        inputs = []
+        if args.files:
+            for file in args.files:
+                inputs.extend(readlines(file))
+        inputs.extend(args.inputs)
+
+        for input in inputs:
             # Determine relative path and root
             relpath = os.path.relpath(input, args.root)
             relpath = os.path.splitext(relpath)[0] + ".html"
