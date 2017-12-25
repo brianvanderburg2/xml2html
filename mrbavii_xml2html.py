@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __author__ = "Brian Allen Vanderburg II"
-__version__ = "0.4"
+__version__ = "0.5"
 
 
 import sys
@@ -24,7 +24,7 @@ except ImportError:
 from mrbaviirc import template
 
 
-class XmlWrapper(template.Library):
+class XmlWrapper(object):
     """ Class to wrap an XML node for the template engine. """
 
     def __init__(self, node):
@@ -49,47 +49,53 @@ class XmlWrapper(template.Library):
     def __bool__(self):
         return True
 
-    def call_tag(self):
+    @property
+    def tag(self):
         return self._node.tag
 
-    def call_ns(self):
+    @property
+    def ns(self):
         return self._ns
 
-    def call_tagname(self):
+    @property
+    def tagname(self):
         return self._tagname
 
-    def call_text(self):
+    @property
+    def text(self):
         return self._node.text if self._node.text else ""
 
-    def call_tail(self):
+    @property
+    def tail(self):
         return self._node.tail if self._node.tail else ""
 
-    def call_alltext(self):
+    @property
+    def alltext(self):
         return "".join(self._node.itertext())
 
-    def lib_attr(self, name, defval=None):
+    def attr(self, name, defval=None):
         return self._node.attrib.get(name, defval)
 
     def __iter__(self):
         for child in self._node:
             yield XmlWrapper(child)
 
-    def lib_findall(self, path):
+    def findall(self, path):
         for child in self._node.findall(path):
             yield XmlWrapper(child)
 
-    def lib_find(self, path):
+    def find(self, path):
         child = self._node.find(path)
         if not child is None:
             child = XmlWrapper(child)
 
         return child
 
-    def lib_str(self):
+    def str(self):
         return ET.tostring(self._node)
 
 
-class Lib(template.Library):
+class Lib(object):
     """ A custom library for xml2html. """
 
     def __init__(self):
@@ -101,11 +107,11 @@ class Lib(template.Library):
         else:
             self._dir = os.path.dirname(fn)
 
-    def lib_esc(self, what, quote=False):
+    def esc(self, what, quote=False):
         import cgi
         return cgi.escape(what, quote)
 
-    def lib_highlight(self, what, syntax, classprefix=""):
+    def highlight(self, what, syntax, classprefix=""):
         import pygments
         import pygments.formatters
         import pygments.lexers
@@ -120,15 +126,15 @@ class Lib(template.Library):
         result = pygments.highlight(what.strip(), lexer, formatter)
         return result
 
-    def lib_highlight_file(self, where, syntax, classprefix=""):
+    def highlight_file(self, where, syntax, classprefix=""):
         fn = os.path.join(self._dir, where)
 
         with open(fn, "rU") as handle:
             what = handle.read()
 
-        return self.lib_highlight(what, syntax, classprefix)
+        return self.highlight(what, syntax, classprefix)
 
-    def lib_xml(self, what):
+    def xml(self, what):
         root = ET.fromstring(what)
         return XmlWrapper(root)
 
