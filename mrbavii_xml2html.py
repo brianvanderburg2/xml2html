@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 __author__ = "Brian Allen Vanderburg II"
-__version__ = "0.5"
+__version__ = "0.6"
 
 
 import sys
@@ -94,6 +94,49 @@ class XmlWrapper(object):
     def str(self):
         return ET.tostring(self._node)
 
+def common_start(ina, inb):
+    result = []
+    for (a, b) in zip(ina, inb):
+        if a == b:
+            result.append(a)
+        else:
+            break
+
+    return ''.join(result)
+
+def strip_common(what):
+    """ Function to strip lines of common leading whitespace. """
+    lines = what.splitlines()
+
+    # Remove leading and trailing empty lines
+    while lines and len(lines[0].strip()) == 0:
+        lines.pop(0)
+
+    while lines and len(lines[-1].strip()) == 0:
+        lines.pop()
+
+    # Need at least two lines for comparison
+    if len(lines) == 0:
+        return ""
+    elif len(lines) == 1:
+        return lines[0].strip()
+
+    # Determine common leading portion of lines
+    common = lines[0]
+    for (i, line) in enumerate(lines[1:], 1):
+
+        if len(line.strip()) == 0:
+            # Ignore blank lines and strip any space on them
+            lines[i] = ""
+        else:
+            # Find match between current common and current line
+            common = common_start(common, line)
+
+    start = len(common) - len(common.lstrip())
+    outlines = [line[start:].rstrip() if line else "" for line in lines]
+
+    return '\n'.join(outlines)
+
 
 class Lib(object):
     """ A custom library for xml2html. """
@@ -123,7 +166,7 @@ class Lib(object):
             nobackground=True,
             classprefix=classprefix)
 
-        result = pygments.highlight(what.strip(), lexer, formatter)
+        result = pygments.highlight(strip_common(what), lexer, formatter)
         return result
 
     def highlight_file(self, where, syntax, classprefix=""):
