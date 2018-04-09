@@ -572,6 +572,8 @@ class Build(Command):
             help="Template search path. May be specified multiple times.")
         parser.add_argument("-D", dest="params", action="append",
             help="name=value parameters to pass")
+        parser.add_argument("-X", dest="xmlobj", action="append",
+            help="name=filename xml files to load")
 
         parser.add_argument("-f", dest="files", action="append", default=None, required=False,
             help="Filename(s) containing a list of files, one per line, to use as inputs.")
@@ -589,6 +591,19 @@ class Build(Command):
             for file in args.files:
                 inputs.extend(readlines(file))
         inputs.extend(args.inputs)
+
+        xmlobjs = {}
+        if args.xmlobj:
+            for xmlobj in args.xmlobj:
+                parts = xmlobj.split("=", 1)
+                if len(parts) != 2:
+                    continue
+
+                (name, fname) = parts
+                app.log("XMLOBJ", fname)
+                obj = ET.parse(fname)
+                root = obj.getroot()
+                xmlobjs[name] = XmlWrapper(root)
 
         for input in inputs:
             # Determine relative path and root
@@ -610,7 +625,8 @@ class Build(Command):
             context = {
                 "toroot": toroot,
                 "relpath": relpath,
-                "xml": XmlWrapper(root)
+                "xml": XmlWrapper(root),
+                "xmlobj": xmlobjs
             }
 
             app.build_from_data(input, output, context)
