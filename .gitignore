@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+.*
+output/
+xml2html.egg-info/
+!.gitignore
+

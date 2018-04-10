@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-__author__ = "Brian Allen Vanderburg II"
-__version__ = "0.6"
+from . import _version
 
+__author__ = "Brian Allen Vanderburg II"
 
 import sys
 import os
@@ -632,6 +632,9 @@ class Build(Command):
             app.build_from_data(input, output, context)
 
 
-if __name__ == "__main__":
+def main():
     Xml2HtmlApp.run_app()
+
+if __name__ == "__main__":
+    main()
 
