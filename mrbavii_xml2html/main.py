@@ -411,7 +411,6 @@ class Xml2HtmlApp(App):
 
         # Create renderer and load/render template
         renderer = template.StringRenderer()
-        self.env.clear()
         tmpl = self.env.load_file(args.template)
         tmpl.render(renderer, our_context)
 
