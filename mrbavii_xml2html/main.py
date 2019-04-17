@@ -534,7 +534,7 @@ class Scan(Command):
         sorted_tags = state.tags()
         sorted_state_tags = {}
         for tag in sorted_tags:
-            sorted_state_tags[tag] = filter(lambda i: tag in i["tags"], sorted_states)
+            sorted_state_tags[tag] = tuple(filter(lambda i: tag in i["tags"], sorted_states))
 
         # Determine path to root
         toroot = os.path.relpath(args.root, os.path.dirname(args.output))
